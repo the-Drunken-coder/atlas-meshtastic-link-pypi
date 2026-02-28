@@ -1,0 +1,32 @@
+{
+  "mode": "asset",
+  "mode_profile": "general",
+  "log_level": "INFO",
+  "radio": {
+    "port": null,
+    "auto_discover": true
+  },
+  "transport": {
+    "spool_path": null
+  },
+  "gateway": {
+    "api_base_url": "https://atlascommandapi.org",
+    "api_token": null,
+    "gateway_id": null,
+    "challenge_code": "ATLAS_CHALLENGE",
+    "expected_response_code": "ATLAS_RESPONSE",
+    "command_channel_url": null,
+    "asset_lease_timeout_seconds": 45.0
+  },
+  "asset": {
+    "entity_id": null,
+    "intent_path": "./scripts/config/asset_intent.json",
+    "world_state_path": "./world_state.json",
+    "auto_provision": true,
+    "expected_challenge_code": "ATLAS_CHALLENGE",
+    "response_code": "ATLAS_RESPONSE",
+    "provision_timeout_seconds": 45.0,
+    "discovery_interval_seconds": 3.0,
+    "intent_diff_enabled": true
+  }
+}
