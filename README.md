@@ -1,0 +1,186 @@
+# Atlas Meshtastic Link
+
+Dual-mode Meshtastic link for Atlas Command - gateway and asset in one package.
+
+## Overview
+
+`atlas_meshtastic_link` is a single Python package that provides both a
+Gateway mode (internet-connected bridge to Atlas Command) and an Asset mode
+(offline edge SDK) over Meshtastic radios.
+
+Key features:
+
+- Hardware serial transport with automatic Meshtastic USB port discovery.
+- Message chunking and reassembly for payloads over Meshtastic packet limits.
+- Durable disk-backed queue so outbound messages survive restarts.
+- Reliability engine with ACK/NACK, retry backoff, and jitter.
+- Dynamic provisioning handshake.
+- Shared operation schemas with gateway/asset-specific handlers.
+- Optional intent diff sync (`atlas.intent.diff`) with periodic full snapshot heartbeat recovery.
+
+## Quick Start
+
+```bash
+pip install -e .
+```
+
+For local gateway/asset web consoles:
+
+```bash
+pip install -e .[webui]
+```
+
+### Usage
+
+```python
+import atlas_meshtastic_link
+
+atlas_meshtastic_link.run("config.json")
+```
+
+`run()` accepts a path to a JSON config file (or a `LinkConfig` instance).
+It blocks until interrupted or an optional `stop_event` is set.
+
+## Local Test Web UI Scripts
+
+Run from the package root:
+
+```bash
+python scripts/gateway_webui.py --host 127.0.0.1 --port 8840
+python scripts/asset_webui.py --host 127.0.0.1 --port 8841
+```
+
+Both scripts provide a small browser UI for:
+- start/stop controls
+- live status
+- effective config preview
+- recent logs
+- automatic startup on launch (serial only)
+
+Defaults:
+- real serial mode is selected by default
+- auto-discover is enabled by default
+- serial ports are claimed with an exclusive process lock; a second process cannot start on the same port
+- when auto-discover sees multiple radios, it tries the next discovered port if one is already in use
+
+Asset note:
+- the asset web UI is diagnostics-focused while core asset runtime behavior is still under active implementation
+
+## Configuration
+
+Create a `config.json`:
+
+```json
+{
+  "mode": "gateway",
+  "mode_profile": "general",
+  "log_level": "INFO",
+  "radio": {
+    "port": null,
+    "auto_discover": true
+  },
+  "transport": {
+    "segment_size": 200,
+    "spool_path": null,
+    "reliability_method": "window"
+  },
+  "gateway": {
+    "api_base_url": "https://atlascommandapi.org",
+    "api_token": null,
+    "asset_lease_timeout_seconds": 45.0
+  },
+  "asset": {
+    "entity_id": null,
+    "world_state_path": "./world_state.json",
+    "auto_provision": true
+  }
+}
+```
+
+| Section       | Key Fields                                              |
+|---------------|---------------------------------------------------------|
+| `mode`        | `"gateway"` or `"asset"`                                |
+| `radio`       | `port` to pin a device, `auto_discover` to scan USB |
+| `transport`   | `segment_size`, `spool_path` for durability, `reliability_method` |
+| `gateway`     | `api_base_url`, `api_token`, `asset_lease_timeout_seconds` |
+| `asset`       | `entity_id`, `world_state_path`, `auto_provision`       |
+
+When `asset.intent_diff_enabled=true`, assets publish `atlas.intent.diff` updates between
+full `atlas.intent` heartbeats. The full snapshot heartbeat interval is controlled by
+`asset.intent_refresh_interval_seconds` (default `30.0`) and ensures eventual resync if a
+diff is dropped or out-of-order.
+
+## USB Auto-Discovery
+
+When `radio.auto_discover` is `true` and no `port` is set, the link scans
+USB serial ports for known Meshtastic chip VID/PID pairs:
+
+| Chip       | VID    | PID    |
+|------------|--------|--------|
+| CH340      | 0x1A86 | 0x7523 |
+| CH9102X    | 0x1A86 | 0x55D4 |
+| CP2102     | 0x10C4 | 0xEA60 |
+| FTDI       | 0x0403 | 0x6001 |
+| Espressif  | 0x303A | 0x1001 |
+| nRF52840   | 0x239A | 0x8029 |
+
+This uses `pyserial` only - no meshtastic import needed. Works on Windows,
+Linux, and macOS.
+
+## Project Structure
+
+```
+src/atlas_meshtastic_link/
+|- __init__.py          # run() + __version__
+|- _link.py             # entry point wiring
+|- config/              # config loading + mode profiles
+|- transport/           # radio I/O, chunking, reassembly, USB discovery
+|- protocol/            # envelope format, reliability, dedup, spool
+|- state/               # world state, subscriptions, overhearing
+|- gateway/             # HTTP bridge + operation dispatch
+`- asset/               # provisioning, sync, EdgeClient
+
+scripts/
+|- gateway_webui.py     # local gateway test web UI
+|- asset_webui.py       # local asset test web UI
+`- _webui_common.py     # shared script helpers
+```
+
+## Running Tests
+
+```bash
+# Unit tests (no hardware required)
+PYTHONPATH=src python -m pytest tests/test_unit -q -m "not hardware"
+
+# All tests including hardware integration
+PYTHONPATH=src python -m pytest tests -q --hardware
+```
+
+## Hardware Integration Tests
+
+Hardware tests requiring physical Meshtastic radios belong in `tests/test_integration/` and should be marked with `@pytest.mark.hardware`. To exclude them from the default run:
+
+```bash
+PYTHONPATH=src python -m pytest tests -q -m "not hardware"
+```
+
+Requirements for hardware tests:
+- At least 2 Meshtastic radios connected over USB.
+- Radios must be on compatible channel/modem settings so they can exchange packets.
+
+## Radio Modes
+
+Radio mode profiles control modem preset and link behavior for different operational scenarios.
+Profiles are JSON files in `src/atlas_meshtastic_link/config/modes/`. The default
+`general` profile uses `MEDIUM_SLOW` modem preset with a hop limit of 3.
+
+## Architecture
+
+Design docs live in `docs/`:
+
+- [Architecture](docs/ARCHITECTURE.md) - system diagram, data flow, and module map
+- [Sync Principles](docs/SYNC_PRINCIPLES.md) - core design invariants
+- [Gateway Discovery](docs/GATEWAY_DISCOVERY.md) - provisioning handshake and channel onboarding
+- [World State](docs/WORLD_STATE.md) - local cache and file-based state exposure
+- [Subscriptions](docs/SUBSCRIPTIONS.md) - lease-based subscription model
+- [Opportunistic Overhearing](docs/OPPORTUNISTIC_OVERHEARING.md) - passive mesh listening
