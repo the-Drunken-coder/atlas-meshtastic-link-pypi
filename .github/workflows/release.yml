@@ -1,0 +1,295 @@
+name: Release (PyPI)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "package/**"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Determine version range
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f package/pyproject.toml ]; then
+            echo "::error::Missing package/pyproject.toml"
+            exit 1
+          fi
+
+          NEW_VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('package/pyproject.toml','rb'))['project']['version'])")"
+          PROJECT_NAME="$(python3 -c "import tomllib; print(tomllib.load(open('package/pyproject.toml','rb'))['project']['name'])")"
+
+          CUR_COMMIT="$(git rev-parse HEAD)"
+          PREV_COMMIT=""
+          OLD_VERSION=""
+
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            PREV_COMMIT="$(git rev-parse HEAD^)"
+            if git cat-file -e "${PREV_COMMIT}:package/pyproject.toml" 2>/dev/null; then
+              OLD_VERSION="$(git show "${PREV_COMMIT}:package/pyproject.toml" | python3 -c "import tomllib,sys; print(tomllib.loads(sys.stdin.read())['project']['version'])")"
+            fi
+          fi
+
+          echo "project_name=${PROJECT_NAME}" >> "$GITHUB_OUTPUT"
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "old_version=${OLD_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "cur_commit=${CUR_COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "prev_commit=${PREV_COMMIT}" >> "$GITHUB_OUTPUT"
+
+          if [ -n "${OLD_VERSION}" ] && [ "${NEW_VERSION}" = "${OLD_VERSION}" ]; then
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip if already on PyPI
+        id: pypi
+        shell: bash
+        env:
+          PROJECT_NAME: ${{ steps.versions.outputs.project_name }}
+          NEW_VERSION: ${{ steps.versions.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee -a "$GITHUB_OUTPUT"
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          name = os.environ["PROJECT_NAME"]
+          version = os.environ["NEW_VERSION"]
+
+          try:
+            with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/json", timeout=20) as resp:
+              data = json.loads(resp.read().decode("utf-8"))
+          except urllib.error.HTTPError as e:
+            if e.code == 404:
+              print("exists_on_pypi=false")
+              raise SystemExit(0)
+            raise
+
+          releases = data.get("releases", {})
+          print("exists_on_pypi=" + ("true" if version in releases else "false"))
+          PY
+
+      - name: Sync root README from package README
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f package/README.md ]; then
+            echo "::error::Missing package/README.md"
+            exit 1
+          fi
+          cp package/README.md README.md
+
+      - name: Update CHANGELOG.md via OpenRouter
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          NEW_VERSION: ${{ steps.versions.outputs.new_version }}
+          CUR_COMMIT: ${{ steps.versions.outputs.cur_commit }}
+          PREV_COMMIT: ${{ steps.versions.outputs.prev_commit }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+            echo "::error::Missing OPENROUTER_API_KEY secret"
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          import textwrap
+          import urllib.request
+          from datetime import datetime, timezone
+
+          def sh(*args: str) -> str:
+            return subprocess.check_output(list(args), text=True).strip()
+
+          new_version = os.environ["NEW_VERSION"]
+          cur_commit = os.environ.get("CUR_COMMIT", "")
+          prev_commit = os.environ.get("PREV_COMMIT", "")
+          model = os.environ.get("OPENROUTER_MODEL") or "moonshotai/kimi-k2.5"
+
+          log_range = f"{prev_commit}..{cur_commit}" if prev_commit else (cur_commit or "HEAD")
+          changed_files = sh("git", "diff", "--name-status", log_range, "--", "package")
+          commits = sh("git", "log", "--pretty=%s", log_range, "--", "package")
+
+          date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+          prompt = textwrap.dedent(f"""
+          You are updating a Keep-a-Changelog style CHANGELOG.md for a Python package published to PyPI.
+
+          Task:
+          - Produce ONE markdown section for version {new_version} dated {date}.
+          - Output MUST start with: "## [{new_version}] - {date}"
+          - Then include a short bullet list (3-8 bullets) summarizing user-visible changes.
+          - If changes are mostly internal/refactor, say so clearly.
+          - Do not include code blocks. Do not include links. Do not include extra commentary.
+
+          Context:
+          - This repo mirrors source code from another monorepo into the `package/` directory.
+          - File changes (name-status):
+          {changed_files}
+
+          Commit subjects affecting package/:
+          {commits}
+          """).strip()
+
+          body = {
+            "model": model,
+            "messages": [
+              {"role": "system", "content": "You write concise, accurate changelog entries."},
+              {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.2,
+            "max_tokens": 400,
+          }
+
+          req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+              "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://github.com/the-Drunken-coder/atlas-meshtastic-link-pypi",
+              "X-Title": "atlas-meshtastic-link changelog bot",
+            },
+            method="POST",
+          )
+
+          import time
+
+          content = ""
+          last = None
+          for attempt in range(3):
+            try:
+              with urllib.request.urlopen(req, timeout=90) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+              if isinstance(data, dict) and data.get("error"):
+                last = data["error"]
+                raise RuntimeError(str(last))
+
+              content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+              if content.startswith(f"## [{new_version}] - {date}"):
+                break
+
+              last = data
+              content = ""
+            except Exception as e:
+              last = repr(e)
+              content = ""
+
+            time.sleep(2 * (attempt + 1))
+
+          if not content.startswith(f"## [{new_version}] - {date}"):
+            # Fallback: keep releases unblocked if OpenRouter is temporarily unavailable.
+            bullets = [
+              "- Synced changes from the ATLAS monorepo.",
+              f"- Version bump to {new_version}.",
+              "- Internal updates and maintenance.",
+            ]
+            content = f"## [{new_version}] - {date}\n" + "\n".join(bullets)
+
+          changelog_path = "CHANGELOG.md"
+          try:
+            existing = open(changelog_path, "r", encoding="utf-8").read()
+          except FileNotFoundError:
+            existing = "# Changelog\n\n"
+
+          if f"## [{new_version}] -" in existing:
+            sys.exit(0)
+
+          lines = existing.splitlines(True)
+          insert_at = 0
+          for i, line in enumerate(lines):
+            if line.strip() == "# Changelog":
+              insert_at = i + 1
+              break
+          while insert_at < len(lines) and lines[insert_at].strip() != "":
+            insert_at += 1
+          if insert_at < len(lines):
+            insert_at += 1
+
+          snippet = content.rstrip() + "\n\n"
+          new_lines = lines[:insert_at] + [snippet] + lines[insert_at:]
+
+          with open(changelog_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write("".join(new_lines))
+          PY
+
+      - name: Commit README + CHANGELOG (if changed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add README.md CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No README/CHANGELOG changes to commit."
+            exit 0
+          fi
+
+          VERSION="${{ steps.versions.outputs.new_version }}"
+          git commit -m "chore(release): update docs + changelog for v${VERSION}"
+          git push
+
+      - name: Setup Python
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: package/pyproject.toml
+
+      - name: Install deps + run tests
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e "./package[dev]"
+          cd package
+          pytest -ra -q --strict-markers --strict-config
+
+      - name: Build distributions
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade build
+          cd package
+          python -m build
+
+      - name: Publish to PyPI
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: package/dist
