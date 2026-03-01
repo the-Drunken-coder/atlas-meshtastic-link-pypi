@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class OutboundSpool:
         )
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA auto_vacuum=FULL")
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -51,7 +53,6 @@ class OutboundSpool:
         if self._conn is None:
             return
 
-        import time
         now = time.time()
         with self._lock:
             try:
@@ -61,6 +62,24 @@ class OutboundSpool:
                 )
             except sqlite3.Error as exc:
                 log.error("[SPOOL] Failed to enqueue message to %s: %s", destination, exc)
+
+    def enqueue_batch(self, messages: list[tuple[str, bytes]]) -> None:
+        """Add multiple messages to the spool in a single explicit transaction."""
+        if not messages or self._conn is None:
+            return
+
+        now = time.time()
+        with self._lock:
+            try:
+                self._conn.execute("BEGIN")
+                self._conn.executemany(
+                    "INSERT INTO messages (destination, payload, created_at) VALUES (?, ?, ?)",
+                    [(dest, payload, now) for dest, payload in messages],
+                )
+                self._conn.execute("COMMIT")
+            except sqlite3.Error as exc:
+                self._conn.execute("ROLLBACK")
+                log.error("[SPOOL] Failed/rolled back batch enqueue: %s", exc)
 
     def peek_next(self) -> tuple[int, str, bytes, int] | None:
         """Return the next message from the spool (id, destination, payload, attempts), or None.
