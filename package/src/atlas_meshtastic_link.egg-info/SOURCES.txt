@@ -42,3 +42,4 @@ src/atlas_meshtastic_link/transport/discovery.py
 src/atlas_meshtastic_link/transport/interface.py
 src/atlas_meshtastic_link/transport/reassembly.py
 src/atlas_meshtastic_link/transport/serial_radio.py
+src/atlas_meshtastic_link/transport/spool.py

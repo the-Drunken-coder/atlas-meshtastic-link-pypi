@@ -31,6 +31,7 @@ from atlas_meshtastic_link.transport.compression import (
     shorten_keys,
 )
 from atlas_meshtastic_link.transport.reassembly import MessageReassembler
+from atlas_meshtastic_link.transport.spool import OutboundSpool
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +78,9 @@ class SerialRadioAdapter:
         self._lock_file = None
         self._interface = None
         self._message_queue: queue.Queue[tuple[str, bytes]] = queue.Queue()
+        self._spool = OutboundSpool(kwargs.pop("spool_path", None))
+        self._spool_event = asyncio.Event()
+        self._transmit_task: asyncio.Task | None = None
         self._subscribed = False
         self._numeric_to_user_id: dict[str, str] = {}
         self._recent_messages: dict[tuple[str, int], float] = {}
@@ -97,6 +101,13 @@ class SerialRadioAdapter:
             if connect:
                 self._interface = self._open_interface(self._port, **kwargs)
                 self._subscribe_receive_events()
+                try:
+                    loop = asyncio.get_running_loop()
+                    self._transmit_task = loop.create_task(self._transmit_loop(), name="atlas_serial_transmit")
+                except RuntimeError:
+                    # No running event loop at construction time; the transmit loop
+                    # will be started lazily on the first call to send().
+                    pass
         except Exception:
             self._release_port_lock()
             raise
@@ -108,45 +119,82 @@ class SerialRadioAdapter:
         payload = data if isinstance(data, bytes) else bytes(data)
         destination_id = self._normalize_destination(destination)
 
-        shortened = shorten_keys(payload)
-        wire_payload = maybe_compress(shortened)
-        segments = self._segment_payload(wire_payload)
+        # Enqueue the payload. The background _transmit_loop will process it.
+        self._spool.enqueue(destination_id, payload)
+        self._spool_event.set()
 
-        log.debug(
-            "[SERIAL][WIRE][TX] destination=%s payload_len=%d wire_len=%d compressed=%s payload=%s",
-            destination_id,
-            len(payload),
-            len(wire_payload),
-            wire_payload[0:1] == PREFIX_ZLIB,
-            _payload_for_log(payload),
-        )
+        # Lazily start the transmit loop if it was not started at construction time.
+        if self._transmit_task is None or self._transmit_task.done():
+            try:
+                loop = asyncio.get_running_loop()
+                self._transmit_task = loop.create_task(self._transmit_loop(), name="atlas_serial_transmit")
+            except RuntimeError:
+                pass
 
-        if len(segments) == 1:
-            log.info("[SERIAL] Sending %d wire bytes to %s", len(wire_payload), destination_id)
-            self._send_frame(segments[0], destination=destination_id)
-            return
+    async def _transmit_loop(self) -> None:
+        """Background task that takes messages from the spool and sends them."""
+        while self._interface is not None and getattr(self, "_subscribed", False):
+            try:
+                item = self._spool.peek_next()
+                if item is None:
+                    await self._spool_event.wait()
+                    self._spool_event.clear()
+                    continue
 
-        log.info(
-            "[SERIAL] Sending %d wire bytes to %s (%d chunks, reliability=%s)",
-            len(wire_payload),
-            destination_id,
-            len(segments),
-            self._reliability_method,
-        )
+                msg_id_db, destination_id, payload, attempts = item
 
-        message_id = self._message_id_from_chunk(segments[0])
-        self._send_data_chunks(segments, destination=destination_id)
-        self._cache_outbound_chunks(destination=destination_id, message_id=message_id, chunks=segments)
+                shortened = shorten_keys(payload)
+                wire_payload = maybe_compress(shortened)
+                segments = self._segment_payload(wire_payload)
 
-        # Broadcast multi-chunk payloads cannot run a request/response reliability loop.
-        if destination_id == "^all" or self._reliability_method != "window":
-            return
+                log.debug(
+                    "[SERIAL][WIRE][TX] db_id=%d destination=%s payload_len=%d wire_len=%d compressed=%s payload=%s",
+                    msg_id_db,
+                    destination_id,
+                    len(payload),
+                    len(wire_payload),
+                    wire_payload[0:1] == PREFIX_ZLIB,
+                    _payload_for_log(payload),
+                )
 
-        delivered = await self._wait_for_window_ack(destination=destination_id, message_id=message_id)
-        if not delivered:
-            raise RuntimeError(
-                f"Windowed reliability timed out waiting for {_CTRL_ALL_RECEIVED} for message {message_id.hex()}"
-            )
+                if len(segments) == 1:
+                    log.info("[SERIAL] Sending %d wire bytes to %s", len(wire_payload), destination_id)
+                    await asyncio.to_thread(self._send_frame, segments[0], destination=destination_id)
+                    self._spool.pop(msg_id_db)
+                    continue
+
+                log.info(
+                    "[SERIAL] Sending %d wire bytes to %s (%d chunks, reliability=%s)",
+                    len(wire_payload),
+                    destination_id,
+                    len(segments),
+                    self._reliability_method,
+                )
+
+                message_id = self._message_id_from_chunk(segments[0])
+                await self._send_data_chunks(segments, destination=destination_id)
+                self._cache_outbound_chunks(destination=destination_id, message_id=message_id, chunks=segments)
+
+                if destination_id == "^all" or self._reliability_method != "window":
+                    self._spool.pop(msg_id_db)
+                    continue
+
+                delivered = await self._wait_for_window_ack(destination=destination_id, message_id=message_id)
+                if delivered:
+                    self._spool.pop(msg_id_db)
+                else:
+                    self._spool.increment_attempt(msg_id_db)
+                    if attempts + 1 >= 3:
+                        log.warning("[SERIAL] Message %s to %s failed after %d attempts, dropping", message_id.hex(), destination_id, attempts + 1)
+                        self._spool.pop(msg_id_db)
+                    else:
+                        log.warning("[SERIAL] Message %s to %s failed, backing off before retry (attempt %d)", message_id.hex(), destination_id, attempts + 1)
+                        await asyncio.sleep(1.5)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log.error("[SERIAL] Error in transmit loop: %s", exc)
+                await asyncio.sleep(1.0)
 
     async def receive(self) -> tuple[bytes, str]:
         while True:
@@ -174,6 +222,16 @@ class SerialRadioAdapter:
             except Exception:
                 pass
             self._subscribed = False
+
+        if self._transmit_task is not None:
+            self._transmit_task.cancel()
+            try:
+                await asyncio.gather(self._transmit_task, return_exceptions=True)
+            except asyncio.CancelledError:
+                pass
+            self._transmit_task = None
+            
+        self._spool.close()
 
         if self._interface is not None and hasattr(self._interface, "close"):
             try:
@@ -356,7 +414,7 @@ class SerialRadioAdapter:
         _flags, message_id, _sequence, _total, _payload = parse_chunk_with_flags(chunk)
         return message_id
 
-    def _send_data_chunks(self, chunks: list[bytes], *, destination: str) -> None:
+    async def _send_data_chunks(self, chunks: list[bytes], *, destination: str) -> None:
         total = len(chunks)
         for index, chunk in enumerate(chunks, start=1):
             flags, message_id, sequence, _total, segment = parse_chunk_with_flags(chunk)
@@ -372,7 +430,7 @@ class SerialRadioAdapter:
                 len(segment),
                 _payload_for_log(segment),
             )
-            self._send_frame(chunk, destination=destination)
+            await asyncio.to_thread(self._send_frame, chunk, destination=destination)
 
     def _cache_outbound_chunks(self, *, destination: str, message_id: bytes, chunks: list[bytes]) -> None:
         with self._outbound_lock:
@@ -390,7 +448,8 @@ class SerialRadioAdapter:
 
     async def _wait_for_window_ack(self, *, destination: str, message_id: bytes) -> bool:
         for attempt in range(1, self._window_max_round_trips + 1):
-            self._send_frame(
+            await asyncio.to_thread(
+                self._send_frame,
                 build_ack_chunk(message_id, _CTRL_BITMAP_REQ),
                 destination=destination,
             )

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: atlas-meshtastic-link
-Version: 0.1.0
+Version: 1.0.0
 Summary: Dual-mode Meshtastic link for Atlas Command — gateway and asset in one package.
 Author: ATLAS Team
 License-Expression: MIT

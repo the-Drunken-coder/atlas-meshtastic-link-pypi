@@ -80,6 +80,7 @@ def _build_radio(cfg: LinkConfig):  # noqa: ANN202
             port,
             segment_size=cfg.transport.segment_size,
             reliability_method=cfg.transport.reliability_method,
+            spool_path=cfg.transport.spool_path,
         )
 
     if cfg.radio.auto_discover:
@@ -97,6 +98,7 @@ def _build_radio(cfg: LinkConfig):  # noqa: ANN202
                     candidate.device,
                     segment_size=cfg.transport.segment_size,
                     reliability_method=cfg.transport.reliability_method,
+                    spool_path=cfg.transport.spool_path,
                 )
             except RuntimeError as exc:
                 if "already in use" not in str(exc):

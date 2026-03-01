@@ -18,6 +18,7 @@ from atlas_meshtastic_link.transport.chunking import (
 )
 from atlas_meshtastic_link.transport.compression import maybe_compress, shorten_keys
 from atlas_meshtastic_link.transport.serial_radio import SerialRadioAdapter
+from tests.helpers.async_utils import wait_until as _wait_until
 
 
 class _FakeInterface:
@@ -107,10 +108,12 @@ def test_serial_send_window_reliability_completes_after_all_received():
         )
         fake_interface = _FakeInterface()
         adapter._interface = fake_interface  # noqa: SLF001
+        adapter._subscribed = True
+        adapter._transmit_task = asyncio.create_task(adapter._transmit_loop())
 
         try:
-            send_task = asyncio.create_task(adapter.send(b"abcdefghij", destination="!1234abcd"))
-            await asyncio.sleep(0.05)
+            await adapter.send(b"abcdefghij", destination="!1234abcd")
+            await _wait_until(lambda: len(fake_interface.sent) >= 4)
 
             assert len(fake_interface.sent) >= 4
             first_payload, kwargs = fake_interface.sent[0]
@@ -135,7 +138,7 @@ def test_serial_send_window_reliability_completes_after_all_received():
                 "from": 123,
             }
             adapter._on_receive(packet, fake_interface)  # noqa: SLF001
-            await send_task
+            await _wait_until(lambda: adapter._spool.peek_next() is None)  # noqa: SLF001
         finally:
             await adapter.close()
 
@@ -155,10 +158,12 @@ def test_serial_send_window_reliability_resends_missing_chunks():
         )
         fake_interface = _FakeInterface()
         adapter._interface = fake_interface  # noqa: SLF001
+        adapter._subscribed = True
+        adapter._transmit_task = asyncio.create_task(adapter._transmit_loop())
 
         try:
-            send_task = asyncio.create_task(adapter.send(b"abcdefghij", destination="!1234abcd"))
-            await asyncio.sleep(0.05)
+            await adapter.send(b"abcdefghij", destination="!1234abcd")
+            await _wait_until(lambda: len(fake_interface.sent) >= 2)
 
             first_payload = fake_interface.sent[0][0]
             _flags, message_id, _seq, _total, _segment = parse_chunk_with_flags(first_payload)
@@ -170,7 +175,7 @@ def test_serial_send_window_reliability_resends_missing_chunks():
                 "from": 123,
             }
             adapter._on_receive(nack_packet, fake_interface)  # noqa: SLF001
-            await asyncio.sleep(0.05)
+            await _wait_until(lambda: sum(1 for p, _ in fake_interface.sent if p == chunk_two) >= 2)
 
             # Chunk 2 should appear at least twice (original + resend).
             occurrences = sum(1 for payload, _kwargs in fake_interface.sent if payload == chunk_two)
@@ -182,7 +187,7 @@ def test_serial_send_window_reliability_resends_missing_chunks():
                 "from": 123,
             }
             adapter._on_receive(ack_packet, fake_interface)  # noqa: SLF001
-            await send_task
+            await _wait_until(lambda: adapter._spool.peek_next() is None)  # noqa: SLF001
         finally:
             await adapter.close()
 
@@ -190,19 +195,25 @@ def test_serial_send_window_reliability_resends_missing_chunks():
 
 
 def test_serial_send_does_not_chunk_small_payload():
-    port = _unique_port_name("COM")
-    adapter = SerialRadioAdapter(port=port, connect=False, segment_size=64)
-    fake_interface = _FakeInterface()
-    adapter._interface = fake_interface  # noqa: SLF001
+    async def _run() -> None:
+        port = _unique_port_name("COM")
+        adapter = SerialRadioAdapter(port=port, connect=False, segment_size=64)
+        fake_interface = _FakeInterface()
+        adapter._interface = fake_interface  # noqa: SLF001
+        adapter._subscribed = True
+        adapter._transmit_task = asyncio.create_task(adapter._transmit_loop())
 
-    try:
-        asyncio.run(adapter.send(b"hello", destination="^all"))
-    finally:
-        asyncio.run(adapter.close())
+        try:
+            await adapter.send(b"hello", destination="^all")
+            await _wait_until(lambda: len(fake_interface.sent) >= 1)
+        finally:
+            await adapter.close()
 
-    assert len(fake_interface.sent) == 1
-    # Payload now carries a 1-byte compression prefix (0x00 = raw for small payloads)
-    assert fake_interface.sent[0][0] == b"\x00hello"
+        assert len(fake_interface.sent) == 1
+        # Payload now carries a 1-byte compression prefix (0x00 = raw for small payloads)
+        assert fake_interface.sent[0][0] == b"\x00hello"
+
+    asyncio.run(_run())
 
 
 def test_serial_receive_reassembles_chunked_payload_and_sends_completion_ack():
@@ -300,41 +311,47 @@ def test_serial_channel_usage_summary_includes_chutil_when_available():
 
 def test_send_receive_with_compression():
     """Full round-trip: send() aliases+compresses, _on_receive() decompresses+expands, payload matches."""
-    port = _unique_port_name("COM")
-    adapter = SerialRadioAdapter(port=port, connect=False, segment_size=200)
-    fake_interface = _FakeInterface()
-    adapter._interface = fake_interface  # noqa: SLF001
+    async def _run() -> None:
+        port = _unique_port_name("COM")
+        adapter = SerialRadioAdapter(port=port, connect=False, segment_size=200)
+        fake_interface = _FakeInterface()
+        adapter._interface = fake_interface  # noqa: SLF001
+        adapter._subscribed = True
+        adapter._transmit_task = asyncio.create_task(adapter._transmit_loop())
 
-    original = json.dumps({"type": "asset_intent", "data": "x" * 300}).encode("utf-8")
+        original = json.dumps({"type": "asset_intent", "data": "x" * 300}).encode("utf-8")
 
-    try:
-        asyncio.run(adapter.send(original, destination="^all"))
+        try:
+            await adapter.send(original, destination="^all")
+            await _wait_until(lambda: len(fake_interface.sent) >= 1)
 
-        # send() should have shortened keys then compressed (payload is large enough)
-        shortened = shorten_keys(original)
-        wire = maybe_compress(shortened)
-        assert len(wire) < len(original)
+            # send() should have shortened keys then compressed (payload is large enough)
+            shortened = shorten_keys(original)
+            wire = maybe_compress(shortened)
+            assert len(wire) < len(original)
 
-        # Simulate receiving the sent frame(s) — feed them back through _on_receive
-        for frame_payload, _kwargs in fake_interface.sent:
-            # Skip ACK/NACK control frames
-            try:
-                flags, _mid, _seq, _total, _seg = parse_chunk_with_flags(frame_payload)
-                if flags & (FLAG_ACK | FLAG_NACK):
-                    continue
-            except ValueError:
-                pass
+            # Simulate receiving the sent frame(s) — feed them back through _on_receive
+            for frame_payload, _kwargs in fake_interface.sent:
+                # Skip ACK/NACK control frames
+                try:
+                    flags, _mid, _seq, _total, _seg = parse_chunk_with_flags(frame_payload)
+                    if flags & (FLAG_ACK | FLAG_NACK):
+                        continue
+                except ValueError:
+                    pass
 
-            packet = {
-                "decoded": {"portnum": "PRIVATE_APP", "payload": frame_payload},
-                "fromId": "!peer1234",
-                "from": 456,
-            }
-            adapter._on_receive(packet, fake_interface)  # noqa: SLF001
+                packet = {
+                    "decoded": {"portnum": "PRIVATE_APP", "payload": frame_payload},
+                    "fromId": "!peer1234",
+                    "from": 456,
+                }
+                adapter._on_receive(packet, fake_interface)  # noqa: SLF001
 
-        sender, received = adapter._message_queue.get_nowait()  # noqa: SLF001
-        assert sender == "!peer1234"
-        # Aliasing round-trip uses compact JSON separators, so compare parsed dicts
-        assert json.loads(received) == json.loads(original)
-    finally:
-        asyncio.run(adapter.close())
+            sender, received = adapter._message_queue.get_nowait()  # noqa: SLF001
+            assert sender == "!peer1234"
+            # Aliasing round-trip uses compact JSON separators, so compare parsed dicts
+            assert json.loads(received) == json.loads(original)
+        finally:
+            await adapter.close()
+
+    asyncio.run(_run())

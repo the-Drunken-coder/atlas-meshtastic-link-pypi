@@ -7,6 +7,7 @@ from typing import Any
 from atlas_meshtastic_link.asset.runner import AssetRunner
 from atlas_meshtastic_link.config.schema import AssetConfig
 from atlas_meshtastic_link.protocol.billboard_wire import decode_billboard_message
+from tests.helpers.async_utils import wait_until as _wait_until
 
 
 class _FakeRadio:
@@ -64,7 +65,7 @@ def test_runner_initial_publish_is_full_when_diff_enabled(tmp_path: Path):
     async def _run() -> None:
         runner = _make_runner(tmp_path, diff_enabled=True, refresh_s=10.0, sequence=[(False, payload)])
         task = asyncio.create_task(runner._intent_loop())
-        await asyncio.sleep(0.15)
+        await _wait_until(lambda: len(runner._radio.sent) >= 1)
         runner._stop_event.set()
         await asyncio.wait_for(task, timeout=1.0)
         decoded = decode_billboard_message(runner._radio.sent[0][0])
@@ -88,7 +89,7 @@ def test_runner_change_sends_diff_when_enabled(tmp_path: Path):
             sequence=[(False, payload_v1), (True, payload_v2)],
         )
         task = asyncio.create_task(runner._intent_loop())
-        await asyncio.sleep(0.35)
+        await _wait_until(lambda: len(runner._radio.sent) >= 2)
         runner._stop_event.set()
         await asyncio.wait_for(task, timeout=1.0)
         decoded = [decode_billboard_message(raw) for raw, _ in runner._radio.sent]
@@ -106,7 +107,7 @@ def test_runner_heartbeat_sends_full_snapshot(tmp_path: Path):
     async def _run() -> None:
         runner = _make_runner(tmp_path, diff_enabled=True, refresh_s=0.2, sequence=[(False, payload)])
         task = asyncio.create_task(runner._intent_loop())
-        await asyncio.sleep(0.35)
+        await _wait_until(lambda: len(runner._radio.sent) >= 2)
         runner._stop_event.set()
         await asyncio.wait_for(task, timeout=1.0)
         decoded = [decode_billboard_message(raw) for raw, _ in runner._radio.sent]
@@ -131,7 +132,7 @@ def test_runner_change_does_not_reset_full_heartbeat_timer(tmp_path: Path):
             sequence=[(False, payload_v1), (True, payload_v2)],
         )
         task = asyncio.create_task(runner._intent_loop())
-        await asyncio.sleep(refresh_s + min_interval_s + 0.30)
+        await _wait_until(lambda: len(runner._radio.sent) >= 3, timeout=refresh_s + min_interval_s + 2.0)
         runner._stop_event.set()
         await asyncio.wait_for(task, timeout=1.0)
         decoded = [decode_billboard_message(raw) for raw, _ in runner._radio.sent]
