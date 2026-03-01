@@ -280,7 +280,7 @@ jobs:
                   {"role": "user", "content": prompt},
               ],
               "temperature": 0.2,
-              "max_tokens": 2000,
+              "max_tokens": 16000,
           }
 
           req = urllib.request.Request(
