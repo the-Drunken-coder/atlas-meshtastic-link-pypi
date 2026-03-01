@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -29,14 +29,12 @@ class WorldStateStore:
         self._data[key] = value
 
     def apply_diff(self, diff: dict[str, Any]) -> None:
-        """Merge a diff dict into the store.
-        """
+        """Merge a diff dict into the store."""
         _deep_merge(self._data, diff)
         self._touch_meta()
 
     def flush(self) -> None:
-        """Atomically write current state to disk.
-        """
+        """Atomically write current state to disk."""
         if self._persist_path is None:
             return
         self._touch_meta()
@@ -52,8 +50,7 @@ class WorldStateStore:
         self.flush()
 
     def load(self) -> None:
-        """Load state from the persist file if it exists.
-        """
+        """Load state from the persist file if it exists."""
         if self._persist_path is None or not self._persist_path.exists():
             return
         loaded = json.loads(self._persist_path.read_text(encoding="utf-8"))
