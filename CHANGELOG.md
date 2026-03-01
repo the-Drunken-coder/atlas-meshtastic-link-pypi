@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.4] - 2026-03-01
+
+- Added `OutboundSpool.enqueue_batch()` method for atomic batch insertion of multiple messages, using explicit SQLite transactions with rollback on error
+- Enabled `PRAGMA auto_vacuum=FULL` on the spool database to automatically reclaim disk space from deleted messages
+- Moved `time` import to module level in `transport/spool.py` to reduce import overhead during high-frequency enqueue operations
+
 ## [1.0.3] - 2026-03-01
 
 - Synced source from ATLAS monorepo (commit `3a75619`)
