@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlas-meshtastic-link"
-version = "1.0.2"
+version = "1.0.3"
 description = "Dual-mode Meshtastic link for Atlas Command — gateway and asset in one package."
 readme = "README.md"
 requires-python = ">=3.10"

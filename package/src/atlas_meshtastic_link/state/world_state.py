@@ -158,5 +158,4 @@ def _deep_merge(target: dict[str, Any], incoming: dict[str, Any]) -> None:
 
 
 def _normalize_world_state(payload: dict[str, Any]) -> None:
-    # Reserved for structural normalization of canonical world-state shape.
-    return
+    """Structural normalization of canonical world-state shape."""
