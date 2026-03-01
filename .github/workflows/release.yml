@@ -124,122 +124,244 @@ jobs:
           import subprocess
           import sys
           import textwrap
+          import time
           import urllib.request
           from datetime import datetime, timezone
 
-          def sh(*args: str) -> str:
-            return subprocess.check_output(list(args), text=True).strip()
 
+          def sh(*args):
+              return subprocess.check_output(list(args), text=True).strip()
+
+
+          def get_per_file_diffs(log_range, path_scope, total_budget=12000):
+              """Get diffs with budget distributed equally across changed files."""
+              try:
+                  changed = sh("git", "diff", "--name-only", log_range, "--", path_scope)
+              except subprocess.CalledProcessError:
+                  return ""
+              if not changed:
+                  return ""
+
+              files = [f for f in changed.splitlines() if f.strip()]
+              if not files:
+                  return ""
+
+              file_diffs = {}
+              for f in files:
+                  try:
+                      file_diffs[f] = sh("git", "diff", log_range, "--", f)
+                  except subprocess.CalledProcessError:
+                      file_diffs[f] = ""
+
+              # Sort smallest first so small diffs free up budget for large ones
+              sorted_files = sorted(files, key=lambda f: len(file_diffs.get(f, "")))
+
+              allocations = {}
+              remaining_budget = total_budget
+              remaining_files = list(sorted_files)
+
+              for f in sorted_files:
+                  share = remaining_budget // max(len(remaining_files), 1)
+                  diff_len = len(file_diffs.get(f, ""))
+                  if diff_len <= share:
+                      allocations[f] = diff_len
+                      remaining_budget -= diff_len
+                  else:
+                      allocations[f] = share
+                      remaining_budget -= share
+                  remaining_files.remove(f)
+
+              # Redistribute leftover to truncated files
+              truncated = [f for f in sorted_files if allocations[f] < len(file_diffs.get(f, ""))]
+              if truncated and remaining_budget > 0:
+                  extra = remaining_budget // len(truncated)
+                  for f in truncated:
+                      allocations[f] += extra
+
+              parts = []
+              for f in files:
+                  diff = file_diffs.get(f, "")
+                  if not diff:
+                      continue
+                  budget = allocations.get(f, 0)
+                  if len(diff) <= budget:
+                      parts.append(diff)
+                  else:
+                      t = diff[:budget]
+                      last_nl = t.rfind("\n")
+                      if last_nl > 0:
+                          t = t[:last_nl]
+                      parts.append(t + f"\n... (truncated, {len(diff) - len(t)} more chars)")
+
+              return "\n".join(parts)
+
+
+          def build_fallback(new_version, date, commits, changed_files):
+              """Build fallback from actual commit info instead of generic text."""
+              bullets = []
+              if commits:
+                  for line in commits.splitlines():
+                      line = line.strip()
+                      if not line:
+                          continue
+                      if line.startswith(("chore(sync):", "chore(release):")):
+                          continue
+                      bullets.append(f"- {line}")
+
+              if not bullets and changed_files:
+                  bullets.append("- Updated package source (synced from upstream monorepo)")
+                  for stat_line in changed_files.splitlines():
+                      stat_line = stat_line.strip()
+                      if "|" in stat_line:
+                          fname = stat_line.split("|")[0].strip()
+                          if fname and not fname.endswith((".lock", ".toml")):
+                              bullets.append(f"- Modified {fname}")
+
+              if not bullets:
+                  bullets = [
+                      "- Synced latest changes from upstream ATLAS monorepo",
+                      f"- Version bump to {new_version}",
+                  ]
+
+              return f"## [{new_version}] - {date}\n" + "\n".join(bullets[:8])
+
+
+          # ── main ──────────────────────────────────────────────────────
           new_version = os.environ["NEW_VERSION"]
           cur_commit = os.environ.get("CUR_COMMIT", "")
           prev_commit = os.environ.get("PREV_COMMIT", "")
           model = os.environ.get("OPENROUTER_MODEL") or "moonshotai/kimi-k2.5"
 
           log_range = f"{prev_commit}..{cur_commit}" if prev_commit else (cur_commit or "HEAD")
-          changed_files = sh("git", "diff", "--name-status", log_range, "--", "package")
-          commits = sh("git", "log", "--pretty=%s", log_range, "--", "package")
+
+          diff_context = get_per_file_diffs(log_range, "package")
+
+          try:
+              commits = sh("git", "log", "--pretty=%s", log_range, "--", "package")
+          except subprocess.CalledProcessError:
+              commits = ""
+
+          try:
+              changed_files = sh("git", "diff", "--stat", log_range, "--", "package")
+          except subprocess.CalledProcessError:
+              changed_files = ""
 
           date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-          prompt = textwrap.dedent(f"""
+
+          prompt = textwrap.dedent(f"""\
           You are updating a Keep-a-Changelog style CHANGELOG.md for a Python package published to PyPI.
 
           Task:
           - Produce ONE markdown section for version {new_version} dated {date}.
-          - Output MUST start with: "## [{new_version}] - {date}"
+          - Output MUST start exactly with: ## [{new_version}] - {date}
           - Then include a short bullet list (3-8 bullets) summarizing user-visible changes.
-          - If changes are mostly internal/refactor, say so clearly.
-          - Do not include code blocks. Do not include links. Do not include extra commentary.
+          - Focus on what changed functionally: new features, bug fixes, API changes, behavioral changes.
+          - If changes are mostly internal/refactor, summarize what was refactored and why it matters.
+          - Do NOT use generic filler like "internal updates and maintenance" — be specific.
+          - Do not include code blocks, markdown fences, links, or extra commentary.
 
           Context:
           - This repo mirrors source code from another monorepo into the `package/` directory.
-          - File changes (name-status):
+
+          Commit subjects:
+          {commits}
+
+          File change summary:
           {changed_files}
 
-          Commit subjects affecting package/:
-          {commits}
-          """).strip()
+          Code diffs (per-file, may be truncated):
+          {diff_context}
+          """)
 
           body = {
-            "model": model,
-            "messages": [
-              {"role": "system", "content": "You write concise, accurate changelog entries."},
-              {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.2,
-            "max_tokens": 400,
+              "model": model,
+              "messages": [
+                  {"role": "system", "content": "You write concise, accurate changelog entries based on code diffs. You never use generic filler text."},
+                  {"role": "user", "content": prompt},
+              ],
+              "temperature": 0.2,
+              "max_tokens": 600,
           }
 
           req = urllib.request.Request(
-            "https://openrouter.ai/api/v1/chat/completions",
-            data=json.dumps(body).encode("utf-8"),
-            headers={
-              "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
-              "Content-Type": "application/json",
-              "HTTP-Referer": "https://github.com/the-Drunken-coder/atlas-meshtastic-link-pypi",
-              "X-Title": "atlas-meshtastic-link changelog bot",
-            },
-            method="POST",
+              "https://openrouter.ai/api/v1/chat/completions",
+              data=json.dumps(body).encode("utf-8"),
+              headers={
+                  "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "https://github.com/the-Drunken-coder/atlas-meshtastic-link-pypi",
+                  "X-Title": "atlas-meshtastic-link changelog bot",
+              },
+              method="POST",
           )
 
-          import time
-
           content = ""
-          last = None
+          last_error = None
           for attempt in range(3):
-            try:
-              with urllib.request.urlopen(req, timeout=90) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+              try:
+                  with urllib.request.urlopen(req, timeout=90) as resp:
+                      data = json.loads(resp.read().decode("utf-8"))
 
-              if isinstance(data, dict) and data.get("error"):
-                last = data["error"]
-                raise RuntimeError(str(last))
+                  if isinstance(data, dict) and data.get("error"):
+                      last_error = data["error"]
+                      print(f"::warning::OpenRouter attempt {attempt+1} returned error: {last_error}", file=sys.stderr)
+                      raise RuntimeError(str(last_error))
 
-              content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-              if content.startswith(f"## [{new_version}] - {date}"):
-                break
+                  raw = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+                  print(f"::notice::LLM response preview (attempt {attempt+1}): {raw[:200]}", file=sys.stderr)
 
-              last = data
-              content = ""
-            except Exception as e:
-              last = repr(e)
-              content = ""
+                  # Strip markdown fences if the model wrapped output
+                  if raw.startswith("```"):
+                      lines = raw.splitlines()
+                      if lines and lines[0].startswith("```"):
+                          lines = lines[1:]
+                      if lines and lines[-1].startswith("```"):
+                          lines = lines[:-1]
+                      raw = "\n".join(lines).strip()
 
-            time.sleep(2 * (attempt + 1))
+                  if raw.startswith(f"## [{new_version}] - {date}"):
+                      content = raw
+                      break
 
-          if not content.startswith(f"## [{new_version}] - {date}"):
-            # Fallback: keep releases unblocked if OpenRouter is temporarily unavailable.
-            bullets = [
-              "- Synced changes from the ATLAS monorepo.",
-              f"- Version bump to {new_version}.",
-              "- Internal updates and maintenance.",
-            ]
-            content = f"## [{new_version}] - {date}\n" + "\n".join(bullets)
+                  last_error = f"Response did not start with expected heading. Got: {raw[:150]}"
+                  print(f"::warning::OpenRouter attempt {attempt+1}: {last_error}", file=sys.stderr)
+              except Exception as e:
+                  last_error = repr(e)
+                  print(f"::warning::OpenRouter attempt {attempt+1} failed: {last_error}", file=sys.stderr)
 
+              time.sleep(2 * (attempt + 1))
+
+          if not content:
+              print(f"::warning::All LLM attempts failed. Last error: {last_error}", file=sys.stderr)
+              print("::warning::Using diff-based fallback for changelog entry.", file=sys.stderr)
+              content = build_fallback(new_version, date, commits, changed_files)
+
+          # ── write to CHANGELOG.md ─────────────────────────────────────
           changelog_path = "CHANGELOG.md"
           try:
-            existing = open(changelog_path, "r", encoding="utf-8").read()
+              existing = open(changelog_path, "r", encoding="utf-8").read()
           except FileNotFoundError:
-            existing = "# Changelog\n\n"
+              existing = "# Changelog\n\n"
 
           if f"## [{new_version}] -" in existing:
-            sys.exit(0)
+              sys.exit(0)
 
           lines = existing.splitlines(True)
           insert_at = 0
           for i, line in enumerate(lines):
-            if line.strip() == "# Changelog":
-              insert_at = i + 1
-              break
+              if line.strip() == "# Changelog":
+                  insert_at = i + 1
+                  break
           while insert_at < len(lines) and lines[insert_at].strip() != "":
-            insert_at += 1
+              insert_at += 1
           if insert_at < len(lines):
-            insert_at += 1
+              insert_at += 1
 
           snippet = content.rstrip() + "\n\n"
           new_lines = lines[:insert_at] + [snippet] + lines[insert_at:]
 
           with open(changelog_path, "w", encoding="utf-8", newline="\n") as f:
-            f.write("".join(new_lines))
+              f.write("".join(new_lines))
           PY
 
       - name: Commit README + CHANGELOG (if changed)
