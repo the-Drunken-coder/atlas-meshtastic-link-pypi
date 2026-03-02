@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
 _package_root = Path(__file__).resolve().parents[2]
 if str(_package_root) not in sys.path:
     sys.path.insert(0, str(_package_root))
+log = logging.getLogger(__name__)
 
 from scripts.integration_tests.combo_harness import (
     add_common_args,
@@ -35,6 +37,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
     require_two_radios(log_prefix="[multi-task]")
     package_root = get_package_root()
@@ -75,17 +78,17 @@ def main() -> int:
                 task_id_prefix="multi",
             )
             task_ids.append(task_id)
-            print(f"[multi-task] Created task {i + 1}/{args.task_count}: {task_id}")
+            log.info("[multi-task] Created task %s/%s: %s", i + 1, args.task_count, task_id)
 
         wait_for_tasks_in_world_state(
             world_state_path,
             task_ids,
             timeout_s=args.task_timeout_seconds,
         )
-        print(f"[multi-task] PASS: All {len(task_ids)} tasks visible in world_state")
+        log.info("[multi-task] PASS: All %s tasks visible in world_state", len(task_ids))
         return 0
     except Exception as exc:
-        print(f"[multi-task] ERROR: {exc}")
+        log.info("[multi-task] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(process)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -18,6 +19,7 @@ _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+log = logging.getLogger(__name__)
 
 
 def request_json(
@@ -58,7 +60,7 @@ def kill_stale_port_listeners(ports: list[int], log_prefix: str = "[harness]") -
     if os.name != "nt":
         return
 
-    print(f"{log_prefix} Checking stale listeners on ports: {ports}")
+    log.info("%s Checking stale listeners on ports: %s", log_prefix, ports)
     scan = subprocess.run(
         ["netstat", "-ano"],
         capture_output=True,
@@ -66,16 +68,20 @@ def kill_stale_port_listeners(ports: list[int], log_prefix: str = "[harness]") -
         check=False,
     )
     if scan.returncode != 0:
-        print(f"{log_prefix} netstat failed (exit={scan.returncode}); skipping stale-port cleanup")
+        log.info(
+            "%s netstat failed (exit=%s); skipping stale-port cleanup",
+            log_prefix,
+            scan.returncode,
+        )
         return
 
     pairs = extract_pid_port_pairs(scan.stdout, set(ports))
     if not pairs:
-        print(f"{log_prefix} No stale listeners found")
+        log.info("%s No stale listeners found", log_prefix)
         return
 
     for pid, port in sorted(pairs):
-        print(f"{log_prefix} Killing PID {pid} on port {port}")
+        log.info("%s Killing PID %s on port %s", log_prefix, pid, port)
         subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=False)
 
 
@@ -150,7 +156,7 @@ def _stream_output(pipe: Any, prefix: str) -> None:
         for line in iter(pipe.readline, ""):
             text = line.rstrip()
             if text:
-                print(f"{prefix} {text}")
+                log.info("%s %s", prefix, text)
     finally:
         try:
             pipe.close()
@@ -251,9 +257,11 @@ def require_two_radios(log_prefix: str = "[harness]") -> None:
     except Exception:
         ports = []
     if len(ports) < 2:
-        print(
-            f"{log_prefix} Skipping: requires at least two Meshtastic USB radios "
-            f"(found {len(ports)}). Plug in two radios and run again."
+        log.info(
+            "%s Skipping: requires at least two Meshtastic USB radios (found %s). "
+            "Plug in two radios and run again.",
+            log_prefix,
+            len(ports),
         )
         sys.exit(0)
 
@@ -496,7 +504,7 @@ def ensure_entity_exists(
             status_code, body = request_json("GET", entity_url, timeout=10.0)
         except RuntimeError as exc:
             # Network-level failure; treat as transient and retry.
-            print(f"{log_prefix} Entity request failed (transient): {exc}; retrying")
+            log.info("%s Entity request failed (transient): %s; retrying", log_prefix, exc)
             time.sleep(2.0)
             continue
 
@@ -505,18 +513,21 @@ def ensure_entity_exists(
                 raise RuntimeError(
                     f"Unexpected entity response type: {type(body)!r}, body={body!r}"
                 )
-            print(f"{log_prefix} Entity exists: {entity_id}")
+            log.info("%s Entity exists: %s", log_prefix, entity_id)
             return body
 
         if status_code == 404:
-            print(f"{log_prefix} Entity not ready yet (404); retrying")
+            log.info("%s Entity not ready yet (404); retrying", log_prefix)
             time.sleep(2.0)
             continue
 
         if 500 <= status_code < 600:
-            print(
-                f"{log_prefix} Transient server error while fetching entity "
-                f"{entity_id}: status={status_code}, body={body!r}; retrying"
+            log.info(
+                "%s Transient server error while fetching entity %s: status=%s, body=%r; retrying",
+                log_prefix,
+                entity_id,
+                status_code,
+                body,
             )
             time.sleep(2.0)
             continue
@@ -547,15 +558,15 @@ def ensure_entity(
     while time.monotonic() < deadline:
         status_code, _payload = request_json("GET", entity_url, timeout=5.0)
         if status_code == 200:
-            print(f"{log_prefix} Entity exists: {entity_id}")
+            log.info("%s Entity exists: %s", log_prefix, entity_id)
             return
         if status_code in {404, 500}:
-            print(f"{log_prefix} Entity not ready yet (status={status_code}); retrying")
+            log.info("%s Entity not ready yet (status=%s); retrying", log_prefix, status_code)
         else:
-            print(f"{log_prefix} GET entity returned status={status_code}; retrying")
+            log.info("%s GET entity returned status=%s; retrying", log_prefix, status_code)
         time.sleep(2.0)
 
-    print(f"{log_prefix} Entity not found after {timeout_s:.0f}s; creating manually")
+    log.info("%s Entity not found after %.0fs; creating manually", log_prefix, timeout_s)
     create_payload = {
         "entity_id": entity_id,
         "entity_type": "asset",

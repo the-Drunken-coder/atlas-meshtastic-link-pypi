@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -21,6 +22,8 @@ from scripts.integration_tests.combo_harness import (
     terminate_combo_process,
     wait_for_readiness,
 )
+
+log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,10 +70,10 @@ def main() -> int:
         if not isinstance(telemetry, dict):
             raise RuntimeError("Entity has no components.telemetry")
 
-        print("[telemetry] PASS: Entity has telemetry from checkin")
+        log.info("[telemetry] PASS: Entity has telemetry from checkin")
         return 0
     except Exception as exc:
-        print(f"[telemetry] ERROR: {exc}")
+        log.error("[telemetry] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(process)

@@ -9,6 +9,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from httpx import HTTPError
+
 from atlas_meshtastic_link.config.schema import GatewayConfig
 from atlas_meshtastic_link.gateway.interaction_log import InteractionLog
 from atlas_meshtastic_link.protocol.billboard_wire import (
@@ -240,7 +242,7 @@ class GatewayOperationsRuntime:
                 since=self._last_since,
                 limit_per_type=self._config.changed_since_limit_per_type,
             )
-        except Exception:
+        except (ConnectionError, HTTPError, OSError, RuntimeError, TimeoutError, ValueError):
             log.exception("[GATEWAY] get_changed_since failed")
             return
 
@@ -292,7 +294,7 @@ class GatewayOperationsRuntime:
         """Fetch the full dataset once at startup to seed the entity index."""
         try:
             dataset = await self._bridge.get_full_dataset()
-        except Exception:
+        except (ConnectionError, HTTPError, OSError, RuntimeError, TimeoutError, ValueError):
             log.exception("[GATEWAY] Failed to seed entity index from full dataset")
             return
 
@@ -312,7 +314,7 @@ class GatewayOperationsRuntime:
         """Fetch the full dataset and push records matching subscription keys."""
         try:
             dataset = await self._bridge.get_full_dataset()
-        except Exception:
+        except (ConnectionError, HTTPError, OSError, RuntimeError, TimeoutError, ValueError):
             log.exception("[GATEWAY] Failed to fetch full dataset for subscription push")
             return
 
@@ -393,7 +395,7 @@ class GatewayOperationsRuntime:
             return
         try:
             self._status_hook(payload)
-        except Exception:
+        except (RuntimeError, TypeError, ValueError):
             log.debug("[GATEWAY] status hook failed", exc_info=True)
 
     async def _publish_asset_presence(self, *, asset_id: str, message: dict[str, Any]) -> None:
@@ -407,7 +409,7 @@ class GatewayOperationsRuntime:
                     "ASSET_INTENT_PUBLISHED",
                     f"asset={asset_id}\n{json.dumps(message, indent=2)}",
                 )
-        except Exception:
+        except (ConnectionError, HTTPError, OSError, RuntimeError, TimeoutError, ValueError):
             self._mark_degraded(asset_id=asset_id, reason="publish_asset_presence_failed")
             log.exception("[GATEWAY] Failed to publish asset intent to Atlas Command (asset_id=%s)", asset_id)
             return
@@ -431,7 +433,7 @@ class GatewayOperationsRuntime:
                 "kind": "tasks",
                 "id": str(task_id),
                 "data": task,
-                "version": task.get("updated_at"),
+                "version": _extract_version(task),
             })
 
         if not records:
@@ -617,6 +619,23 @@ class GatewayOperationsRuntime:
                 "SYNC_HEALTH_SUMMARY",
                 f"assets={total} in_sync={total - degraded} degraded={degraded} max_discrepancy_age_ms={max_age_ms}",
             )
+
+
+def _extract_version(record: dict[str, Any]) -> str | None:
+    """Extract the updated_at timestamp from an API response record.
+
+    The core Atlas Command API nests updated_at inside a ``metadata`` block,
+    e.g. ``{"metadata": {"updated_at": "..."}}``.  Older or minimal payloads
+    may place it at the top level, so we fall back there for compatibility.
+    """
+    metadata = record.get("metadata")
+    if isinstance(metadata, dict):
+        val = metadata.get("updated_at")
+        if val is not None:
+            return val
+    return record.get("updated_at")
+
+
 def _records_from_changes(changes: dict[str, Any]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for entity in changes.get("entities", []) or []:
@@ -629,7 +648,7 @@ def _records_from_changes(changes: dict[str, Any]) -> list[dict[str, Any]]:
                     "kind": "entities",
                     "id": str(entity_id),
                     "data": entity,
-                    "version": entity.get("updated_at"),
+                    "version": _extract_version(entity),
                 }
             )
     for task in changes.get("tasks", []) or []:
@@ -642,7 +661,7 @@ def _records_from_changes(changes: dict[str, Any]) -> list[dict[str, Any]]:
                     "kind": "tasks",
                     "id": str(task_id),
                     "data": task,
-                    "version": task.get("updated_at"),
+                    "version": _extract_version(task),
                 }
             )
     for obj in changes.get("objects", []) or []:
@@ -655,7 +674,7 @@ def _records_from_changes(changes: dict[str, Any]) -> list[dict[str, Any]]:
                     "kind": "objects",
                     "id": str(object_id),
                     "data": obj,
-                    "version": obj.get("updated_at"),
+                    "version": _extract_version(obj),
                 }
             )
     return records

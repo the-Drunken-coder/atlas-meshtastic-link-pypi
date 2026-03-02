@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -23,6 +24,8 @@ from scripts.integration_tests.combo_harness import (
     wait_for_gateway_ready,
     wait_for_task_in_world_state,
 )
+
+log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,7 +57,7 @@ def main() -> int:
             args.entity_id,
             task_id_prefix="reconnect",
         )
-        print(f"[reconnect] Created task {task_id} before asset start")
+        log.info("[reconnect] Created task %s before asset start", task_id)
 
         asset_process = start_asset_only(package_root, args.host, args.asset_port)
         try:
@@ -64,12 +67,12 @@ def main() -> int:
                 task_id,
                 timeout_s=args.task_timeout_seconds,
             )
-            print("[reconnect] PASS: Task delivered after asset reconnect")
+            log.info("[reconnect] PASS: Task delivered after asset reconnect")
             return 0
         finally:
             terminate_combo_process(asset_process)
     except Exception as exc:
-        print(f"[reconnect] ERROR: {exc}")
+        log.error("[reconnect] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(gateway_process)

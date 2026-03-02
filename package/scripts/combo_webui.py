@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 
 def _stream_logs(prefix: str, pipe, log_fh=None) -> None:  # noqa: ANN001
@@ -15,7 +18,7 @@ def _stream_logs(prefix: str, pipe, log_fh=None) -> None:  # noqa: ANN001
             text = line.rstrip("\r\n")
             if text:
                 stamped = f"[{prefix}] {text}"
-                print(stamped)
+                log.info(stamped)
                 if log_fh is not None:
                     try:
                         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
@@ -34,19 +37,19 @@ def _terminate_process(process: subprocess.Popen[str], name: str, timeout: float
     if process.poll() is not None:
         return
 
-    print(f"[combo] stopping {name}...")
+    log.info("[combo] stopping %s...", name)
     process.terminate()
     try:
         process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        print(f"[combo] {name} did not exit in {timeout:.1f}s; killing")
+        log.info("[combo] %s did not exit in %.1fs; killing", name, timeout)
         process.kill()
         process.wait()
 
 
 def _log_combo(msg: str, log_fh=None) -> None:  # noqa: ANN001
     stamped = f"[combo] {msg}"
-    print(stamped)
+    log.info(stamped)
     if log_fh is not None:
         try:
             ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
@@ -94,6 +97,7 @@ def _start_process(
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     script_dir = Path(__file__).resolve().parent
     gateway_script = script_dir / "gateway_webui.py"
     asset_script = script_dir / "asset_webui.py"
@@ -135,7 +139,7 @@ def main() -> int:
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_fh = log_path.open("w", encoding="utf-8")
         except OSError as exc:
-            print(f"[combo] WARNING: could not open log file {args.log_file}: {exc}")
+            log.info("[combo] WARNING: could not open log file %s: %s", args.log_file, exc)
 
     package_root = script_dir.parent
     try:

@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 
 from atlas_meshtastic_link.config.schema import GatewayConfig
-from atlas_meshtastic_link.gateway.operations.runtime import GatewayOperationsRuntime
+from atlas_meshtastic_link.gateway.operations.runtime import (
+    GatewayOperationsRuntime,
+    _extract_version,
+    _records_from_changes,
+)
 from atlas_meshtastic_link.protocol.billboard_wire import (
     decode_billboard_message,
     encode_asset_intent,
@@ -23,7 +27,14 @@ class _FakeBridge:
     def __init__(self) -> None:
         self.published: list[tuple[str, dict]] = []
         self._changed_since: dict = {
-            "entities": [{"entity_id": "e-1", "updated_at": "2026-02-26T00:00:00Z", "subtype": "track"}],
+            "entities": [
+                {
+                    "entity_id": "e-1",
+                    "entity_type": "track",
+                    "subtype": "track",
+                    "metadata": {"updated_at": "2026-02-26T00:00:00Z"},
+                }
+            ],
             "tasks": [],
             "objects": [],
         }
@@ -272,7 +283,7 @@ def test_gateway_runtime_broadcasts_task_for_tasks_self_subscription():
                     "task_id": "task-1",
                     "entity_id": "asset-1",
                     "status": "pending",
-                    "updated_at": "2026-02-26T00:00:00Z",
+                    "metadata": {"updated_at": "2026-02-26T00:00:00Z"},
                 }
             ],
             "objects": [],
@@ -353,9 +364,9 @@ def test_forward_checkin_tasks_applies_truncation() -> None:
             asset_id="asset-1",
             checkin_response={
                 "tasks": [
-                    {"task_id": "task-1", "updated_at": "2026-02-26T00:00:00Z"},
-                    {"task_id": "task-2", "updated_at": "2026-02-26T00:00:01Z"},
-                    {"task_id": "task-3", "updated_at": "2026-02-26T00:00:02Z"},
+                    {"task_id": "task-1", "metadata": {"updated_at": "2026-02-26T00:00:00Z"}},
+                    {"task_id": "task-2", "metadata": {"updated_at": "2026-02-26T00:00:01Z"}},
+                    {"task_id": "task-3", "metadata": {"updated_at": "2026-02-26T00:00:02Z"}},
                 ]
             },
         )
@@ -385,5 +396,80 @@ def test_forward_checkin_tasks_skips_when_rate_limited() -> None:
             checkin_response={"tasks": [{"task_id": "task-1"}]},
         )
         assert radio.sent == []
+
+    asyncio.run(_run())
+
+
+def test_extract_version_from_metadata_block():
+    """Version should be extracted from metadata.updated_at (core API format)."""
+    record = {"entity_id": "e-1", "metadata": {"updated_at": "2026-01-01T00:00:00Z"}}
+    assert _extract_version(record) == "2026-01-01T00:00:00Z"
+
+
+def test_extract_version_falls_back_to_top_level():
+    """For backwards compatibility, fall back to top-level updated_at."""
+    record = {"entity_id": "e-1", "updated_at": "2026-01-01T00:00:00Z"}
+    assert _extract_version(record) == "2026-01-01T00:00:00Z"
+
+
+def test_extract_version_prefers_metadata_over_top_level():
+    """metadata.updated_at takes precedence over top-level updated_at."""
+    record = {
+        "entity_id": "e-1",
+        "updated_at": "old",
+        "metadata": {"updated_at": "new"},
+    }
+    assert _extract_version(record) == "new"
+
+
+def test_extract_version_returns_none_when_absent():
+    """Returns None when neither metadata nor top-level updated_at is present."""
+    assert _extract_version({"entity_id": "e-1"}) is None
+
+
+def test_records_from_changes_extracts_metadata_version():
+    """_records_from_changes should use metadata.updated_at for version."""
+    changes = {
+        "entities": [
+            {"entity_id": "e-1", "metadata": {"updated_at": "2026-01-01T00:00:00Z"}},
+        ],
+        "tasks": [
+            {"task_id": "t-1", "metadata": {"updated_at": "2026-01-02T00:00:00Z"}},
+        ],
+        "objects": [
+            {"object_id": "o-1", "metadata": {"updated_at": "2026-01-03T00:00:00Z"}},
+        ],
+    }
+    records = _records_from_changes(changes)
+    assert len(records) == 3
+    assert records[0]["version"] == "2026-01-01T00:00:00Z"
+    assert records[1]["version"] == "2026-01-02T00:00:00Z"
+    assert records[2]["version"] == "2026-01-03T00:00:00Z"
+
+
+def test_forward_checkin_tasks_extracts_metadata_version():
+    """Checkin tasks with metadata block should have version extracted correctly."""
+    async def _run() -> None:
+        radio = _FakeRadio()
+        runtime = GatewayOperationsRuntime(
+            radio=radio,
+            bridge=_FakeBridge(),
+            config=GatewayConfig(publish_max_messages_per_second=5.0),
+            stop_event=asyncio.Event(),
+        )
+        await runtime._forward_checkin_tasks(
+            asset_id="asset-1",
+            checkin_response={
+                "tasks": [
+                    {"task_id": "task-1", "metadata": {"updated_at": "2026-03-01T12:00:00Z"}},
+                ]
+            },
+        )
+        assert len(radio.sent) == 1
+        decoded = decode_billboard_message(radio.sent[0][0])
+        assert decoded is not None
+        records = decoded.get("records", [])
+        assert len(records) == 1
+        assert records[0]["version"] == "2026-03-01T12:00:00Z"
 
     asyncio.run(_run())

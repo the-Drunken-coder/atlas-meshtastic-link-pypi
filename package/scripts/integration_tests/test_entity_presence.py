@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
 _package_root = Path(__file__).resolve().parents[2]
 if str(_package_root) not in sys.path:
     sys.path.insert(0, str(_package_root))
+log = logging.getLogger(__name__)
 
 from scripts.integration_tests.combo_harness import (
     add_common_args,
@@ -29,6 +31,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
     require_two_radios(log_prefix="[entity-presence]")
     package_root = get_package_root()
@@ -56,10 +59,10 @@ def main() -> int:
             timeout_s=args.entity_timeout_seconds,
             log_prefix="[entity-presence]",
         )
-        print("[entity-presence] PASS: Entity exists in Atlas API")
+        log.info("[entity-presence] PASS: Entity exists in Atlas API")
         return 0
     except Exception as exc:
-        print(f"[entity-presence] ERROR: {exc}")
+        log.info("[entity-presence] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(process)

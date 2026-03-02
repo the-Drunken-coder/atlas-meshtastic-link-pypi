@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
+
 from atlas_meshtastic_link.gateway import http_bridge as bridge_module
 from atlas_meshtastic_link.gateway.http_bridge import AtlasHttpBridge
 
 
-class _NotFoundError(Exception):
+class _NotFoundError(httpx.HTTPStatusError):
     def __init__(self) -> None:
-        self.response = type("Resp", (), {"status_code": 404})()
-        super().__init__("not found")
+        response = httpx.Response(status_code=404)
+        super().__init__("not found", request=httpx.Request("PUT", "http://test"), response=response)
 
 
 class _FakeClient:

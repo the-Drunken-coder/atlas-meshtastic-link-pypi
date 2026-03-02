@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from scripts.integration_tests.combo_harness import (
     wait_for_readiness,
     wait_for_task_in_world_state,
 )
+
+log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,7 +74,7 @@ def main() -> int:
             args.entity_id,
             task_id_prefix="subscribed",
         )
-        print(f"[subscribed] Created task {task_id}; waiting for world_state")
+        log.info("[subscribed] Created task %s; waiting for world_state", task_id)
         wait_for_task_in_world_state(
             world_state_path,
             task_id,
@@ -84,10 +87,10 @@ def main() -> int:
                 f"Task {task_id} not in subscribed.tasks (tasks:self subscription should store there)"
             )
 
-        print("[subscribed] PASS: Task in subscribed.tasks")
+        log.info("[subscribed] PASS: Task in subscribed.tasks")
         return 0
     except Exception as exc:
-        print(f"[subscribed] ERROR: {exc}")
+        log.error("[subscribed] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(process)

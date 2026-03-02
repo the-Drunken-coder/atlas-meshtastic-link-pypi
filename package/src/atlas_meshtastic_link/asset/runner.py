@@ -66,7 +66,7 @@ class AssetRunner:
                         "world_state_path": self._config.world_state_path,
                     }
                 )
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 log.debug("[ASSET] status hook failed", exc_info=True)
         tasks = [
             asyncio.create_task(self._intent_loop(), name="atlas_asset_intent_loop"),
@@ -204,7 +204,7 @@ class AssetRunner:
             if self._status_hook is not None:
                 try:
                     self._status_hook({"world_state_path": self._config.world_state_path})
-                except Exception:
+                except (RuntimeError, TypeError, ValueError):
                     log.debug("[ASSET] status hook failed", exc_info=True)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=interval)

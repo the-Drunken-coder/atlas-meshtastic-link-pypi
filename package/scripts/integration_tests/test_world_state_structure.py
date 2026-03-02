@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from scripts.integration_tests.combo_harness import (
     wait_for_readiness,
     wait_for_task_in_world_state,
 )
+
+log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,10 +85,10 @@ def main() -> int:
         if missing:
             raise RuntimeError(f"World state missing keys: {missing}")
 
-        print("[structure] PASS: World state has expected structure")
+        log.info("[structure] PASS: World state has expected structure")
         return 0
     except Exception as exc:
-        print(f"[structure] ERROR: {exc}")
+        log.error("[structure] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(process)

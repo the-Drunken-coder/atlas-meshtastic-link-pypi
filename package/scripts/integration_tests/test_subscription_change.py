@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,7 @@ from scripts.integration_tests.combo_harness import (
 )
 
 INTENT_POLL_WAIT_S = 3.0
+log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,7 +84,7 @@ def main() -> int:
             args.entity_id,
             task_id_prefix="sub",
         )
-        print(f"[subscription] Created task {task_id}")
+        log.info("[subscription] Created task %s", task_id)
 
         subs = original_intent.get("subscriptions") or {}
         tasks_list = list(subs.get("tasks") or [])
@@ -90,7 +92,7 @@ def main() -> int:
             tasks_list.append(task_id)
         modified = {**original_intent, "subscriptions": {**subs, "tasks": tasks_list}}
         intent_path.write_text(json.dumps(modified, indent=2), encoding="utf-8")
-        print(f"[subscription] Added {task_id} to subscriptions.tasks")
+        log.info("[subscription] Added %s to subscriptions.tasks", task_id)
 
         time.sleep(INTENT_POLL_WAIT_S)
 
@@ -100,10 +102,10 @@ def main() -> int:
             timeout_s=args.task_timeout_seconds,
         )
 
-        print("[subscription] PASS: Task delivered after subscription change")
+        log.info("[subscription] PASS: Task delivered after subscription change")
         return 0
     except Exception as exc:
-        print(f"[subscription] ERROR: {exc}")
+        log.error("[subscription] ERROR: %s", exc)
         return 1
     finally:
         if original_intent is not None and intent_path is not None and intent_path.exists():

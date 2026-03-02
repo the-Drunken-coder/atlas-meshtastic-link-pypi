@@ -108,7 +108,7 @@ class SerialRadioAdapter:
                     # No running event loop at construction time; the transmit loop
                     # will be started lazily on the first call to send().
                     pass
-        except Exception:
+        except (ConnectionError, OSError, RuntimeError, TimeoutError, ValueError):
             self._release_port_lock()
             raise
 
@@ -192,7 +192,7 @@ class SerialRadioAdapter:
                         await asyncio.sleep(1.5)
             except asyncio.CancelledError:
                 break
-            except Exception as exc:
+            except (ConnectionError, OSError, RuntimeError, TimeoutError, TypeError, ValueError) as exc:
                 log.error("[SERIAL] Error in transmit loop: %s", exc)
                 await asyncio.sleep(1.0)
 
@@ -217,9 +217,10 @@ class SerialRadioAdapter:
         if self._subscribed:
             try:
                 from pubsub import pub
+                from pubsub.core.topicexc import TopicNameError
 
                 pub.unsubscribe(self._on_receive, "meshtastic.receive")
-            except Exception:
+            except (AttributeError, ImportError, KeyError, RuntimeError, TopicNameError):
                 pass
             self._subscribed = False
 
@@ -236,7 +237,7 @@ class SerialRadioAdapter:
         if self._interface is not None and hasattr(self._interface, "close"):
             try:
                 self._interface.close()
-            except Exception as exc:
+            except (AttributeError, OSError, RuntimeError) as exc:
                 log.warning("[SERIAL] Error closing serial interface on %s: %s", self._port, exc)
             self._interface = None
 
@@ -263,7 +264,7 @@ class SerialRadioAdapter:
         if callable(get_url):
             try:
                 primary_url = str(get_url(includeAll=False))
-            except Exception:
+            except (AttributeError, RuntimeError, TypeError, ValueError):
                 primary_url = None
 
         channels_obj = getattr(local_node, "channels", None)
@@ -272,7 +273,7 @@ class SerialRadioAdapter:
             if callable(get_channels):
                 try:
                     channels_obj = get_channels()
-                except Exception:
+                except (AttributeError, RuntimeError, TypeError, ValueError):
                     channels_obj = None
 
         parsed = _parse_channel_entries(channels_obj)
@@ -333,7 +334,7 @@ class SerialRadioAdapter:
         if callable(wait_for_config):
             try:
                 wait_for_config()
-            except Exception as exc:
+            except (OSError, RuntimeError, TimeoutError) as exc:
                 log.warning("[SERIAL] waitForConfig() failed on %s: %s", port, exc)
         return interface
 
@@ -399,7 +400,7 @@ class SerialRadioAdapter:
                     }
 
             self._message_queue.put((sender_str, payload))
-        except Exception as exc:
+        except (KeyError, RuntimeError, TypeError, ValueError, OSError) as exc:
             log.debug("[SERIAL] Failed to process received packet: %s", exc)
 
     def _segment_payload(self, payload: bytes) -> list[bytes]:
@@ -770,7 +771,7 @@ class SerialRadioAdapter:
                     user_id = str(node_info.user.id)
                     self._numeric_to_user_id[numeric_id] = user_id
                     return user_id
-            except Exception:
+            except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
                 pass
 
         fallback = f"!{numeric_id_int:08x}"
@@ -796,7 +797,7 @@ class SerialRadioAdapter:
         except OSError as exc:
             lock_file.close()
             raise RuntimeError(f"Serial port {self._port} is already in use by another process.") from exc
-        except Exception:
+        except ImportError:
             lock_file.close()
             raise
         self._lock_file = lock_file
@@ -835,7 +836,7 @@ def _private_app_portnum() -> int:
         from meshtastic import portnums_pb2
 
         return int(portnums_pb2.PRIVATE_APP)
-    except Exception:
+    except (ImportError, AttributeError, TypeError, ValueError):
         return 80
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from scripts.integration_tests.combo_harness import (
     wait_for_readiness,
     wait_for_task_in_world_state,
 )
+
+log = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,7 +74,7 @@ def main() -> int:
             args.entity_id,
             task_id_prefix="status",
         )
-        print(f"[status] Created task {task_id}; waiting for world_state")
+        log.info("[status] Created task %s; waiting for world_state", task_id)
         wait_for_task_in_world_state(
             world_state_path,
             task_id,
@@ -85,10 +88,10 @@ def main() -> int:
         if status_val != "acknowledged":
             raise RuntimeError(f"Expected status=acknowledged, got {status_val}")
 
-        print("[status] PASS: Task status acknowledged in API")
+        log.info("[status] PASS: Task status acknowledged in API")
         return 0
     except Exception as exc:
-        print(f"[status] ERROR: {exc}")
+        log.error("[status] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(process)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import time
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 _package_root = Path(__file__).resolve().parents[2]
 if str(_package_root) not in sys.path:
     sys.path.insert(0, str(_package_root))
+log = logging.getLogger(__name__)
 
 from scripts.integration_tests.combo_harness import (
     add_common_args,
@@ -29,6 +31,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
     require_two_radios(log_prefix="[readiness]")
     package_root = get_package_root()
@@ -52,10 +55,10 @@ def main() -> int:
             require_intent=False,
         )
         elapsed = time.perf_counter() - start
-        print(f"[readiness] PASS: Readiness without intent in {elapsed:.1f}s")
+        log.info("[readiness] PASS: Readiness without intent in %.1fs", elapsed)
         return 0
     except Exception as exc:
-        print(f"[readiness] ERROR: {exc}")
+        log.info("[readiness] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(process)

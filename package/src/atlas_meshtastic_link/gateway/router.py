@@ -77,7 +77,7 @@ class GatewayRouter:
             except asyncio.TimeoutError:
                 self._expire_stale_assets()
                 continue
-            except Exception:
+            except (ConnectionError, OSError, RuntimeError, ValueError):
                 log.exception("[ROUTER] Receive failed")
                 self._expire_stale_assets()
                 continue
@@ -102,7 +102,7 @@ class GatewayRouter:
                     self._handle_provision_complete(sender, message)
                 else:
                     await self._dispatch_business_message(raw, sender)
-            except Exception:
+            except (ConnectionError, KeyError, OSError, RuntimeError, TypeError, ValueError):
                 log.exception("[ROUTER] Handler failed for op=%s sender=%s", op, sender)
             finally:
                 self._expire_stale_assets()
@@ -287,7 +287,7 @@ class GatewayRouter:
             return
         try:
             self._on_assets_changed(sorted(self._connected_assets))
-        except Exception:
+        except (RuntimeError, TypeError, ValueError):
             log.debug("[ROUTER] on_assets_changed callback failed", exc_info=True)
 
     def _mark_asset_activity(self, sender: str) -> None:

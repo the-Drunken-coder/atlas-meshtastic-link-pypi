@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from atlas_asset_client import AtlasCommandHttpClient
+from httpx import HTTPStatusError
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class AtlasHttpBridge:
         try:
             response = await self.client.checkin_entity(asset_id, **checkin_kwargs)
             return response or {}
-        except Exception as exc:
+        except HTTPStatusError as exc:
             if not self._is_not_found_error(exc):
                 raise
 

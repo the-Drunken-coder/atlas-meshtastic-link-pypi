@@ -302,7 +302,7 @@ async def _read_channel_url(radio) -> str | None:  # noqa: ANN001
         return None
     try:
         channel = await get_channel()
-    except Exception:
+    except (AttributeError, ConnectionError, OSError, RuntimeError, TimeoutError, TypeError, ValueError):
         return None
     if not channel:
         return None
@@ -315,7 +315,7 @@ async def _read_channel_usage_summary(radio) -> str | None:  # noqa: ANN001
         return None
     try:
         usage = await get_usage()
-    except Exception:
+    except (AttributeError, ConnectionError, OSError, RuntimeError, TimeoutError, TypeError, ValueError):
         return None
     if not usage:
         return None
@@ -345,5 +345,5 @@ def _emit_status(status_hook: Callable[[dict[str, Any]], None] | None, **payload
         return
     try:
         status_hook(payload)
-    except Exception:
+    except (RuntimeError, TypeError, ValueError):
         log.debug("[LINK] status_hook raised", exc_info=True)
