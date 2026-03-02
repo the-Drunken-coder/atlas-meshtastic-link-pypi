@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5] - 2026-03-02
+
+- Replaced broad `except Exception` clauses with specific exception types (`ConnectionError`, `OSError`, `RuntimeError`, `ValueError`, etc.) in link, router, asset runner, and radio modules to prevent masking of unexpected failures
+- Narrowed HTTP exception handling in gateway bridge and operations runtime to distinguish `httpx.HTTPStatusError` and `httpx.HTTPError` for finer-grained retry and error reporting
+- Added structured logging infrastructure to `combo_webui.py` and all integration test scripts, replacing ad-hoc output with configurable loggers
+- Hardened serial radio adapter against missing event loops at construction time by lazily initializing the transmit loop on first send instead of at instantiation
+- Expanded unit test coverage for gateway operations runtime and HTTP bridge, adding tests for HTTP error scenarios and runtime edge cases
+
 ## [1.0.4] - 2026-03-01
 
 - Added `OutboundSpool.enqueue_batch()` method for atomic batch insertion of multiple messages, using explicit SQLite transactions with rollback on error
