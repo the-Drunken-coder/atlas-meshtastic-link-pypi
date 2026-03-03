@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.6] - 2026-03-03
+
+- Added message deduplication layer (`protocol.dedup`) to prevent processing duplicate protocol messages across unreliable transports
+- Introduced envelope handling module (`protocol.envelope`) for structured message packaging, parsing, and wire format validation
+- Expanded gateway lease registry with enhanced resource tracking, automatic expiration handling, and improved lifecycle management
+- Improved HTTP bridge robustness with better connection pooling, retry logic, and error recovery for gateway-to-cloud communication
+- Refactored asset synchronization logic for more reliable intent-to-state reconciliation and edge-case handling in concurrent updates
+- Restructured world state management with clarified entity section semantics and updated documentation reflecting new structure
+- Migrated entire test suite to `next_gen_tests/` with reorganized fixtures, new fake radio and async utilities, and expanded integration coverage for provisioning and roundtrip scenarios
+
 ## [1.0.5] - 2026-03-02
 
 - Replaced broad `except Exception` clauses with specific exception types (`ConnectionError`, `OSError`, `RuntimeError`, `ValueError`, etc.) in link, router, asset runner, and radio modules to prevent masking of unexpected failures
