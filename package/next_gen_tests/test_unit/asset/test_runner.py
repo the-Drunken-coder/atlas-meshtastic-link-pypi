@@ -7,7 +7,7 @@ from typing import Any
 from atlas_meshtastic_link.asset.runner import AssetRunner
 from atlas_meshtastic_link.config.schema import AssetConfig
 from atlas_meshtastic_link.protocol.billboard_wire import decode_billboard_message
-from tests.helpers.async_utils import wait_until as _wait_until
+from next_gen_tests.helpers.async_utils import wait_until as _wait_until
 
 
 class _FakeRadio:
@@ -47,7 +47,7 @@ def _make_runner(tmp_path: Path, *, diff_enabled: bool, refresh_s: float, sequen
             entity_id="asset-1",
             intent_path=str(tmp_path / "intent.json"),
             world_state_path=str(tmp_path / "world.json"),
-            intent_poll_interval_seconds=0.1,
+            intent_poll_interval_seconds=0.2,
             publish_min_interval_seconds=0.1,
             intent_refresh_interval_seconds=refresh_s,
             intent_diff_enabled=diff_enabled,

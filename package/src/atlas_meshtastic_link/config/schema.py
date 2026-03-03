@@ -45,7 +45,7 @@ class GatewayConfig:
     command_channel_url: Optional[str] = None
     asset_lease_timeout_seconds: float = 45.0
     api_poll_interval_seconds: float = 1.0
-    publish_max_messages_per_second: float = 5.0
+    publish_max_messages_per_second: float = 15.0
     index_broadcast_interval_seconds: float = 30.0
     index_diff_min_interval_seconds: float = 5.0
     asset_intent_ttl_seconds: float = 30.0

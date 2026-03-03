@@ -73,22 +73,11 @@ class AssetSync:
                 is_subscribed = (
                     task_entity_id is not None and str(task_entity_id) == asset_id
                 )
-            if is_subscribed:
-                self._world_state.upsert_section_record(
-                    section="subscribed",
+            if is_subscribed or self._overhearing.should_ingest("gateway_update", key):
+                self._world_state.upsert_record(
                     group=kind,
                     record_id=item_id,
                     record=record,
-                )
-            elif self._overhearing.should_ingest("gateway_update", key):
-                subgroup = kind if kind in {"entities", "tasks", "objects"} else None
-                rid = item_id if subgroup else key
-                self._world_state.upsert_section_record(
-                    section="passive",
-                    group="gateway",
-                    record_id=rid,
-                    record=record,
-                    subgroup=subgroup,
                 )
 
     async def handle_gateway_index(self, payload: dict[str, Any], *, sender: str) -> None:
@@ -109,9 +98,8 @@ class AssetSync:
         if not isinstance(components, dict):
             components = {}
         asset_id = str(payload.get("asset_id") or sender)
-        self._world_state.upsert_section_record(
-            section="passive",
-            group="assets",
+        self._world_state.upsert_record(
+            group="entities",
             record_id=asset_id,
             record={
                 "asset_id": asset_id,
@@ -126,3 +114,25 @@ class AssetSync:
                 "received_at": time.time(),
             },
         )
+        tracks = payload.get("tracks")
+        if isinstance(tracks, list):
+            for track in tracks:
+                if not isinstance(track, dict):
+                    continue
+                track_id = track.get("entity_id")
+                if not track_id:
+                    continue
+                self._world_state.upsert_record(
+                    group="entities",
+                    record_id=track_id,
+                    record={
+                        "asset_id": track_id,
+                        "entity_type": "track",
+                        "subtype": track.get("subtype") or "track",
+                        "alias": track.get("alias") or track_id,
+                        "source": "asset",
+                        "source_node": sender,
+                        "components": track.get("components") or {},
+                        "received_at": time.time(),
+                    },
+                )

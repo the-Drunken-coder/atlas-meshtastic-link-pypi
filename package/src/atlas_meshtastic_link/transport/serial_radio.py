@@ -199,8 +199,9 @@ class SerialRadioAdapter:
     async def receive(self) -> tuple[bytes, str]:
         while True:
             try:
-                # queue.get() waits up to 0.5s in a worker thread; intended for single-consumer usage.
-                sender, payload = await asyncio.to_thread(self._message_queue.get, True, 0.5)
+                # Short timeout so cancellation from wait_for() lands between
+                # iterations rather than while a thread holds a consumed item.
+                sender, payload = await asyncio.to_thread(self._message_queue.get, True, 0.1)
                 if sender.isdigit():
                     sender = self._convert_numeric_to_user_id(sender) or sender
                 log.debug(

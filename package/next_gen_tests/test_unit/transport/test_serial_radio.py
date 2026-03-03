@@ -18,7 +18,7 @@ from atlas_meshtastic_link.transport.chunking import (
 )
 from atlas_meshtastic_link.transport.compression import maybe_compress, shorten_keys
 from atlas_meshtastic_link.transport.serial_radio import SerialRadioAdapter
-from tests.helpers.async_utils import wait_until as _wait_until
+from next_gen_tests.helpers.async_utils import wait_until as _wait_until
 
 
 class _FakeInterface:

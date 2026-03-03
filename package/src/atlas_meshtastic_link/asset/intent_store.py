@@ -22,6 +22,7 @@ def default_intent(asset_id: str | None = None) -> dict[str, Any]:
             "objects": [],
         },
         "meta": {},
+        "tracks": [],
     }
 
 
@@ -131,6 +132,22 @@ class AssetIntentStore:
             normalized["asset_id"] = self._asset_id or "asset-1"
         if not normalized.get("alias"):
             normalized["alias"] = normalized["asset_id"]
+            
+        tracks = payload.get("tracks")
+        if isinstance(tracks, list):
+            valid_tracks = []
+            for track in tracks:
+                if isinstance(track, dict):
+                    entity_id = track.get("entity_id")
+                    subtype = track.get("subtype")
+                    track_comps = track.get("components")
+                    if isinstance(entity_id, str) and entity_id and isinstance(subtype, str) and subtype:
+                        if isinstance(track_comps, dict) and isinstance(track_comps.get("telemetry"), dict):
+                            valid_tracks.append(track)
+            normalized["tracks"] = valid_tracks
+        else:
+            normalized["tracks"] = []
+            
         return normalized
 
     def _content_hash(self, payload: dict[str, Any]) -> str:

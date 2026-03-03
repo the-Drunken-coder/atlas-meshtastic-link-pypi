@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -14,6 +17,26 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+DEFAULT_ATLAS_API_URL = "http://localhost:8000"
+
+
+def get_atlas_api_url() -> str:
+    """Return Atlas Command API URL from env or default localhost."""
+    url = os.environ.get("ATLAS_COMMAND_API_URL", DEFAULT_ATLAS_API_URL)
+    return url.rstrip("/")
+
+
+def atlas_command_available(timeout: float = 2.0) -> bool:
+    """Return True if Atlas Command is reachable at the configured API URL."""
+    try:
+        url = f"{get_atlas_api_url()}/health"
+        req = Request(url=url, method="GET")
+        with urlopen(req, timeout=timeout) as resp:
+            return resp.status == 200
+    except (URLError, OSError):
+        return False
+
 
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -117,6 +140,8 @@ def start_combo_webui(
     host: str,
     gateway_port: int,
     asset_port: int,
+    *,
+    api_base_url: str | None = None,
     log_prefix: str = "[combo]",
 ) -> subprocess.Popen[str]:
     """Start combo_webui and return the process. Streams output with log_prefix."""
@@ -133,6 +158,19 @@ def start_combo_webui(
         "--log-file",
         "",
     ]
+    if api_base_url is not None:
+        config_dir = package_root / "scripts" / "config"
+        gateway_cfg = config_dir / "gateway_webui.json"
+        asset_cfg = config_dir / "asset_webui.json"
+        tmp = Path(tempfile.mkdtemp(prefix="pi_combo_config_"))
+        atexit.register(shutil.rmtree, tmp, True)
+        for src, name in [(gateway_cfg, "gateway"), (asset_cfg, "asset")]:
+            data = json.loads(src.read_text(encoding="utf-8"))
+            if "gateway" in data and isinstance(data["gateway"], dict):
+                data["gateway"]["api_base_url"] = api_base_url
+            dst = tmp / f"{name}_webui.json"
+            dst.write_text(json.dumps(data), encoding="utf-8")
+            command.extend([f"--{name}-config", str(dst)])
     process = subprocess.Popen(
         command,
         cwd=str(package_root),
@@ -358,27 +396,10 @@ def cleanup_entity_tasks(api_base: str, entity_id: str, timeout: float = 10.0) -
 
 
 def world_state_contains_task(payload: dict[str, Any], task_id: str) -> bool:
-    """Check if world_state JSON contains the given task (subscribed or passive)."""
-    subscribed = payload.get("subscribed")
-    if isinstance(subscribed, dict):
-        tasks = subscribed.get("tasks")
-        if isinstance(tasks, dict) and task_id in tasks:
-            return True
-
-    passive = payload.get("passive")
-    if isinstance(passive, dict):
-        gateway = passive.get("gateway")
-        if isinstance(gateway, dict):
-            tasks = gateway.get("tasks")
-            if isinstance(tasks, dict):
-                if task_id in tasks or f"tasks:{task_id}" in tasks:
-                    return True
-                for record in tasks.values():
-                    if isinstance(record, dict) and (
-                        record.get("id") == task_id or record.get("task_id") == task_id
-                    ):
-                        return True
-
+    """Check if world_state JSON contains the given task."""
+    tasks = payload.get("tasks")
+    if isinstance(tasks, dict) and task_id in tasks:
+        return True
     return False
 
 
@@ -434,13 +455,11 @@ def wait_for_tasks_in_world_state(
     )
 
 
-def task_in_subscribed_section(world_state_data: dict[str, Any], task_id: str) -> bool:
-    """Return True if task is in subscribed.tasks, False if only in passive.gateway.tasks."""
-    subscribed = world_state_data.get("subscribed")
-    if isinstance(subscribed, dict):
-        tasks = subscribed.get("tasks")
-        if isinstance(tasks, dict) and task_id in tasks:
-            return True
+def task_in_world_state_dict(world_state_data: dict[str, Any], task_id: str) -> bool:
+    """Return True if task is in world_state.json tasks mapping."""
+    tasks = world_state_data.get("tasks")
+    if isinstance(tasks, dict) and task_id in tasks:
+        return True
     return False
 
 
@@ -448,11 +467,10 @@ def validate_world_state_structure(data: dict[str, Any]) -> list[str]:
     """Check presence of required keys; return list of missing keys or empty if valid."""
     required = [
         ("meta",),
-        ("subscribed",),
-        ("passive",),
         ("index",),
-        ("subscribed", "tasks"),
-        ("passive", "gateway"),
+        ("entities",),
+        ("tasks",),
+        ("objects",),
     ]
     missing: list[str] = []
     for path in required:

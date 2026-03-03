@@ -1,4 +1,4 @@
-﻿"""Unit tests for scripts.gateway_webui."""
+"""Unit tests for scripts.gateway_webui."""
 from __future__ import annotations
 
 import time
@@ -46,7 +46,7 @@ def test_gateway_start_and_stop(monkeypatch):
             "radio_mode": "serial",
             "radio_port": "COM7",
             "auto_discover": "on",
-            "gateway_api_base_url": "https://atlascommandapi.org",
+            "gateway_api_base_url": "http://localhost:8000",
             "gateway_api_token": "",
             "spool_path": "",
             "log_level": "INFO",
@@ -74,7 +74,7 @@ def test_gateway_start_validation_error():
         "/start",
         data={
             "radio_mode": "serial",
-            "gateway_api_base_url": "https://atlascommandapi.org",
+            "gateway_api_base_url": "http://localhost:8000",
             "log_level": "INFO",
         },
     )

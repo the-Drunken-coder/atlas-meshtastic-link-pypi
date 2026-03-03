@@ -96,28 +96,79 @@ class AtlasHttpBridge:
 
         try:
             response = await self.client.checkin_entity(asset_id, **checkin_kwargs)
-            return response or {}
         except HTTPStatusError as exc:
             if not self._is_not_found_error(exc):
                 raise
+            create_payload = {
+                "entity_id": asset_id,
+                "entity_type": entity_type,
+                "alias": alias,
+                "subtype": subtype,
+                "components": components,
+            }
+            log.debug("[HTTP_BRIDGE] Creating new entity: %r", create_payload)
+            await self.client.create_entity(
+                entity_id=asset_id,
+                entity_type=entity_type,
+                alias=alias,
+                subtype=subtype,
+                components=components or None,
+            )
+            response = await self.client.checkin_entity(asset_id, **checkin_kwargs)
+            log.info("[HTTP_BRIDGE] Published new asset presence to Atlas Command: %s", asset_id)
 
-        create_payload = {
-            "entity_id": asset_id,
-            "entity_type": entity_type,
-            "alias": alias,
-            "subtype": subtype,
-            "components": components,
-        }
-        log.debug("[HTTP_BRIDGE] Creating new entity: %r", create_payload)
-        await self.client.create_entity(
-            entity_id=asset_id,
-            entity_type=entity_type,
-            alias=alias,
-            subtype=subtype,
-            components=components or None,
-        )
-        response = await self.client.checkin_entity(asset_id, **checkin_kwargs)
-        log.info("[HTTP_BRIDGE] Published new asset presence to Atlas Command: %s", asset_id)
+        tracks = intent.get("tracks")
+        if isinstance(tracks, list):
+            for track in tracks:
+                if not isinstance(track, dict):
+                    continue
+                track_id = track.get("entity_id")
+                if not track_id:
+                    continue
+                track_alias = self._string_or_none(track.get("alias")) or track_id
+                track_subtype = self._string_or_none(track.get("subtype")) or "track"
+                track_comps = track.get("components")
+                if not isinstance(track_comps, dict):
+                    continue
+                
+                track_telemetry = track_comps.get("telemetry")
+                if not isinstance(track_telemetry, dict):
+                    track_telemetry = {}
+                    
+                track_status_component = track_comps.get("status")
+                track_status_value = None
+                if isinstance(track_status_component, dict):
+                    track_status_value = track_status_component.get("value")
+                track_status = self._string_or_none(track_status_value) or self._string_or_none(track_telemetry.get("status"))
+
+                track_checkin_kwargs: dict[str, Any] = {
+                    "status": track_status,
+                    "latitude": self._float_or_none(track_telemetry.get("latitude")),
+                    "longitude": self._float_or_none(track_telemetry.get("longitude")),
+                    "altitude_m": self._float_or_none(track_telemetry.get("altitude_m")),
+                    "speed_m_s": self._float_or_none(track_telemetry.get("speed_m_s")),
+                    "heading_deg": self._float_or_none(track_telemetry.get("heading_deg")),
+                }
+                
+                try:
+                    await self.client.checkin_entity(track_id, **track_checkin_kwargs)
+                except HTTPStatusError as _exc:
+                    if not self._is_not_found_error(_exc):
+                        log.warning("[HTTP_BRIDGE] Failed to checkin track %s: %s", track_id, _exc)
+                        continue
+                    try:
+                        await self.client.create_entity(
+                            entity_id=track_id,
+                            entity_type="track",
+                            alias=track_alias,
+                            subtype=track_subtype,
+                            components=track_comps,
+                        )
+                        await self.client.checkin_entity(track_id, **track_checkin_kwargs)
+                        log.info("[HTTP_BRIDGE] Published new track from asset %s to Atlas Command: %s", asset_id, track_id)
+                    except Exception as e:
+                        log.warning("[HTTP_BRIDGE] Could not create new track %s: %s", track_id, e)
+
         return response or {}
 
     def _is_not_found_error(self, exc: Exception) -> bool:

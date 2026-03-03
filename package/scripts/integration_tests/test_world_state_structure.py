@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify world_state.json has expected structure (meta, subscribed, passive, index)."""
+"""Verify world_state.json has expected structure (meta, index, entities, tasks, objects)."""
 from __future__ import annotations
 
 import argparse

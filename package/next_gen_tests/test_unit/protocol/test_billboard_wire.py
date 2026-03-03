@@ -30,6 +30,25 @@ def test_encode_decode_asset_intent():
     assert parsed["msg_type"] == ASSET_INTENT
     assert parsed["asset_id"] == "asset-1"
 
+def test_encode_asset_intent_with_tracks():
+    raw = encode_asset_intent(
+        asset_id="asset-1",
+        subscriptions={"entities": ["e1"]},
+        intent_seq=2,
+        intent_hash="def456",
+        generated_at_ms=2,
+        expected_max_silence_ms=10000,
+        components={"telemetry": {"latitude": 2.0}},
+        tracks=[{"entity_id": "track-1", "subtype": "person", "components": {}}]
+    )
+    parsed = decode_billboard_message(raw)
+    assert parsed is not None
+    assert parsed["msg_type"] == ASSET_INTENT
+    assert parsed["asset_id"] == "asset-1"
+    assert "tracks" in parsed
+    assert len(parsed["tracks"]) == 1
+    assert parsed["tracks"][0]["entity_id"] == "track-1"
+
 
 def test_encode_decode_gateway_update():
     raw = encode_gateway_update(records=[{"kind": "entities", "id": "e1", "data": {"x": 1}}])

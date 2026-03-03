@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify tasks:self subscription stores tasks in subscribed.tasks, not passive.gateway.tasks."""
+"""Verify tasks:self subscription stores tasks in tasks mapping instead of the old passive section partitioning."""
 from __future__ import annotations
 
 import argparse
@@ -21,7 +21,7 @@ from scripts.integration_tests.combo_harness import (
     require_two_radios,
     resolve_world_state_path,
     start_combo_webui,
-    task_in_subscribed_section,
+    task_in_world_state_dict,
     terminate_combo_process,
     wait_for_readiness,
     wait_for_task_in_world_state,
@@ -38,10 +38,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    require_two_radios(log_prefix="[subscribed]")
+    require_two_radios(log_prefix="[tasks-sync]")
     package_root = get_package_root()
 
-    kill_stale_port_listeners([args.gateway_port, args.asset_port], log_prefix="[subscribed]")
+    kill_stale_port_listeners([args.gateway_port, args.asset_port], log_prefix="[tasks-sync]")
     process = start_combo_webui(
         package_root,
         args.host,
@@ -66,15 +66,15 @@ def main() -> int:
             args.api_base_url,
             args.entity_id,
             timeout_s=args.entity_timeout_seconds,
-            log_prefix="[subscribed]",
+            log_prefix="[tasks-sync]",
         )
 
         task_id, _ = create_task(
             args.api_base_url,
             args.entity_id,
-            task_id_prefix="subscribed",
+            task_id_prefix="tasks-sync",
         )
-        log.info("[subscribed] Created task %s; waiting for world_state", task_id)
+        log.info("[tasks-sync] Created task %s; waiting for world_state", task_id)
         wait_for_task_in_world_state(
             world_state_path,
             task_id,
@@ -82,15 +82,15 @@ def main() -> int:
         )
 
         data = json.loads(world_state_path.read_text(encoding="utf-8"))
-        if not task_in_subscribed_section(data, task_id):
+        if not task_in_world_state_dict(data, task_id):
             raise RuntimeError(
-                f"Task {task_id} not in subscribed.tasks (tasks:self subscription should store there)"
+                f"Task {task_id} not in tasks mapping (tasks:self subscription should store there)"
             )
 
-        log.info("[subscribed] PASS: Task in subscribed.tasks")
+        log.info("[tasks-sync] PASS: Task in tasks section")
         return 0
     except Exception as exc:
-        log.error("[subscribed] ERROR: %s", exc)
+        log.error("[tasks-sync] ERROR: %s", exc)
         return 1
     finally:
         terminate_combo_process(process)

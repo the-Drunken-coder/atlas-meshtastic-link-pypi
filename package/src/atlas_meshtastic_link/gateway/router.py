@@ -51,8 +51,10 @@ class GatewayRouter:
         on_assets_changed: Callable[[list[str]], None] | None = None,
         on_business_message: Callable[[bytes, str], Awaitable[None] | None] | None = None,
         interaction_log: InteractionLog | None = None,
+        ready_event: asyncio.Event | None = None,
     ) -> None:
         self._radio = radio
+        self._ready_event = ready_event
         self._gateway_id = gateway_id
         self._challenge_code = challenge_code
         self._expected_response_code = expected_response_code
@@ -71,6 +73,8 @@ class GatewayRouter:
 
     async def run(self) -> None:
         log.info("[ROUTER] Discovery router started")
+        if self._ready_event is not None:
+            self._ready_event.set()
         while not self._stop_event.is_set():
             try:
                 raw, sender = await asyncio.wait_for(self._radio.receive(), timeout=self._poll_seconds)

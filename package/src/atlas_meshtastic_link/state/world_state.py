@@ -72,19 +72,15 @@ class WorldStateStore:
         meta.update(values)
         self._touch_meta()
 
-    def upsert_section_record(
+    def upsert_record(
         self,
         *,
-        section: str,
         group: str,
         record_id: str,
         record: dict[str, Any],
         subgroup: str | None = None,
     ) -> None:
-        sections = self._data.setdefault(section, {})
-        if not isinstance(sections, dict):
-            sections = {}
-            self._data[section] = sections
+        sections = self._data
         bucket = sections.setdefault(group, {})
         if not isinstance(bucket, dict):
             bucket = {}
@@ -97,10 +93,8 @@ class WorldStateStore:
         bucket[record_id] = record
         self._touch_meta()
 
-    def prune_section_older_than(self, *, section: str, group: str, cutoff_epoch: float) -> int:
-        sections = self._data.get(section, {})
-        if not isinstance(sections, dict):
-            return 0
+    def prune_older_than(self, *, group: str, cutoff_epoch: float) -> int:
+        sections = self._data
         bucket = sections.get(group, {})
         if not isinstance(bucket, dict):
             return 0
@@ -133,19 +127,9 @@ def _default_world_state() -> dict[str, Any]:
             "updated_at": None,
             "source_node": None,
         },
-        "subscribed": {
-            "entities": {},
-            "tasks": {},
-            "objects": {},
-        },
-        "passive": {
-            "gateway": {
-                "entities": {},
-                "tasks": {},
-                "objects": {},
-            },
-            "assets": {},
-        },
+        "entities": {},
+        "tasks": {},
+        "objects": {},
     }
 
 
@@ -159,3 +143,32 @@ def _deep_merge(target: dict[str, Any], incoming: dict[str, Any]) -> None:
 
 def _normalize_world_state(payload: dict[str, Any]) -> None:
     """Structural normalization of canonical world-state shape."""
+    for group in ("entities", "tasks", "objects"):
+        bucket = payload.get(group)
+        if not isinstance(bucket, dict):
+            payload[group] = {}
+
+    # Merge order matters: subscribed first, then passive.  When both legacy
+    # sections contain the same record ID, subscribed wins because it is merged
+    # first and _merge_legacy_records skips records already present in target.
+    subscribed = payload.get("subscribed")
+    if isinstance(subscribed, dict):
+        for group in ("entities", "tasks", "objects"):
+            _merge_legacy_records(payload[group], subscribed.get(group))
+
+    passive = payload.get("passive")
+    if isinstance(passive, dict):
+        gateway = passive.get("gateway")
+        if isinstance(gateway, dict):
+            for group in ("entities", "tasks", "objects"):
+                _merge_legacy_records(payload[group], gateway.get(group))
+        _merge_legacy_records(payload["entities"], passive.get("assets"))
+
+
+def _merge_legacy_records(target: dict[str, Any], source: Any) -> None:
+    if not isinstance(source, dict):
+        return
+    for record_id, record in source.items():
+        # Preserve canonical top-level records when both legacy and new keys exist.
+        if record_id not in target:
+            target[record_id] = record

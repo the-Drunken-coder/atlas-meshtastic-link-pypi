@@ -15,16 +15,26 @@ from atlas_meshtastic_link.protocol.discovery_wire import (
 from atlas_meshtastic_link.transport.serial_radio import SerialRadioAdapter
 
 
-async def _await_discovery_presence(asset_radio: SerialRadioAdapter, timeout_seconds: float = 30.0) -> tuple[dict, str]:
+async def _await_discovery_presence(
+    asset_radio: SerialRadioAdapter,
+    asset_node_id: str,
+    timeout_seconds: float = 45.0,
+) -> tuple[dict, str]:
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     while True:
-        await asset_radio.send(encode_discovery_message(DISCOVERY_SEARCH), destination="^all")
-        window_end = min(deadline, asyncio.get_running_loop().time() + 3.0)
+        await asset_radio.send(
+            encode_discovery_message(DISCOVERY_SEARCH, asset_id="test-asset", asset_node_id=asset_node_id),
+            destination="^all",
+        )
+        window_end = min(deadline, asyncio.get_running_loop().time() + 2.0)
         while True:
             remaining = window_end - asyncio.get_running_loop().time()
             if remaining <= 0:
                 break
-            raw, sender = await asyncio.wait_for(asset_radio.receive(), timeout=remaining)
+            try:
+                raw, sender = await asyncio.wait_for(asset_radio.receive(), timeout=remaining)
+            except TimeoutError:
+                break
             decoded = decode_discovery_message(raw)
             if decoded is None:
                 continue
@@ -57,17 +67,26 @@ def test_provisioning_discovery_smoke(two_radio_ports: tuple[str, str]):
 
             assert gateway_radio is not None
             assert asset_radio is not None
+            # Let radios initialize (get_node_id, mesh sync) before discovery
+            _gateway_id, asset_id = await asyncio.gather(
+                asyncio.wait_for(gateway_radio.get_node_id(), timeout=12.0),
+                asyncio.wait_for(asset_radio.get_node_id(), timeout=12.0),
+            )
+            asset_node_id = str(asset_id) if asset_id else "unknown"
+            gateway_ready = asyncio.Event()
             router = GatewayRouter(
                 radio=gateway_radio,
                 challenge_code="ATLAS_TEST_CHALLENGE",
                 expected_response_code="ATLAS_TEST_RESPONSE",
                 stop_event=stop_event,
                 poll_seconds=0.2,
+                ready_event=gateway_ready,
             )
             router_task = asyncio.create_task(router.run())
+            await asyncio.wait_for(gateway_ready.wait(), timeout=5.0)
 
             try:
-                message, sender = await _await_discovery_presence(asset_radio)
+                message, sender = await _await_discovery_presence(asset_radio, asset_node_id)
             except TimeoutError:
                 pytest.skip("radios detected but no gateway discovery presence was observed in time")
             assert message.get("op") == GATEWAY_PRESENT

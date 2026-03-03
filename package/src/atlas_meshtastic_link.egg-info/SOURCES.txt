@@ -28,7 +28,9 @@ src/atlas_meshtastic_link/gateway/operations/registry.py
 src/atlas_meshtastic_link/gateway/operations/runtime.py
 src/atlas_meshtastic_link/protocol/__init__.py
 src/atlas_meshtastic_link/protocol/billboard_wire.py
+src/atlas_meshtastic_link/protocol/dedup.py
 src/atlas_meshtastic_link/protocol/discovery_wire.py
+src/atlas_meshtastic_link/protocol/envelope.py
 src/atlas_meshtastic_link/protocol/reliability.py
 src/atlas_meshtastic_link/protocol/subscriptions.py
 src/atlas_meshtastic_link/state/__init__.py

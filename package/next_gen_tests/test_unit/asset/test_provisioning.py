@@ -15,7 +15,7 @@ from atlas_meshtastic_link.protocol.discovery_wire import (
     decode_discovery_message,
     encode_discovery_message,
 )
-from tests.helpers.fake_radio import FakeRadio
+from next_gen_tests.helpers.fake_radio import FakeRadio
 
 
 def test_provisioning_handshake_success():

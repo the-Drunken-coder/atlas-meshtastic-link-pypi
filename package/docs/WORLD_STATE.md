@@ -8,6 +8,15 @@ The link package maintains a local cache of the known world: the asset's own tel
 
 The current world state is exposed to user code via a local `world_state.json` file. Since Atlas Command's data (Entities, Tasks, Objects, Tracks) is already heavily JSON-oriented, `world_state.json` mirrors these structures. User code can read this file at whatever rate it needs to make decisions.
 
+### Structure
+
+The file uses a flat structure to store all known state regardless of how it was received (overheard from neighbors vs subscribed from the gateway). 
+
+- `entities`: A dictionary mapping entity IDs to wrapper records (`kind`, `id`, `data`, `source`, `source_node`, `received_at`, `version`, ...). `data` contains Atlas entity payloads (Assets, Tracks, Geofeatures, etc.).
+- `tasks`: A dictionary mapping task IDs to wrapper records with the same envelope shape; task payloads are stored under `data`.
+- `objects`: A dictionary mapping object IDs to wrapper records with the same envelope shape; object payloads are stored under `data`.
+- `index`: Additional metadata about what data the Gateway considers active or synced, including entity ID references.
+
 ## Interaction Flow
 
 1. **Boot & Provision:** The asset boots, provisions with the Gateway, and joins the encrypted Command Channel.

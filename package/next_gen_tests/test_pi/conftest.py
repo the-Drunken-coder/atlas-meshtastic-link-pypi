@@ -19,6 +19,7 @@ from scripts.integration_tests.combo_harness import (
     cleanup_entity_tasks,
     delete_task,
     ensure_entity,
+    get_atlas_api_url,
     get_package_root,
     kill_stale_port_listeners,
     resolve_world_state_path,
@@ -75,28 +76,6 @@ def pytest_addoption(parser):
     )
 
 
-def pytest_collection_modifyitems(config, items):
-    """Skip pi tests when needed and pin xdist to loadgroup for sequential pi execution."""
-    # Force PI tests to run sequentially (same worker) to avoid port 8840/8841 conflicts
-    if config.pluginmanager.get_plugin("xdist"):
-        if getattr(config.option, "dist", None) != "loadgroup":
-            config.option.dist = "loadgroup"
-        xdist_group = getattr(pytest.mark, "xdist_group", None)
-        if xdist_group:
-            for item in items:
-                if "pi" in item.keywords:
-                    item.add_marker(xdist_group("pi"))
-
-    ports = _discover_ports_safe()
-    if len(ports) >= 2:
-        return
-
-    skip_marker = pytest.mark.skip(reason="requires at least two Meshtastic USB radios")
-    for item in items:
-        if "pi" in item.keywords:
-            item.add_marker(skip_marker)
-
-
 @pytest.fixture(scope="session")
 def pi_entity_id() -> str:
     """Entity ID used by PI tests."""
@@ -105,8 +84,8 @@ def pi_entity_id() -> str:
 
 @pytest.fixture(scope="session")
 def pi_api_base() -> str:
-    """API base URL for PI tests."""
-    return "https://atlascommandapi.org"
+    """API base URL for PI tests (localhost by default, override with ATLAS_COMMAND_API_URL)."""
+    return get_atlas_api_url()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -150,6 +129,7 @@ def pi_package_root() -> Path:
 @pytest.fixture()
 def pi_combo(
     pi_package_root: Path,
+    pi_api_base: str,
     pi_entity_id: str,
     request,
 ) -> Generator[ComboEnv, None, None]:
@@ -159,7 +139,13 @@ def pi_combo(
     host = "127.0.0.1"
 
     kill_stale_port_listeners([gateway_port, asset_port], log_prefix="[pi-combo]")
-    process = start_combo_webui(pi_package_root, host, gateway_port, asset_port)
+    process = start_combo_webui(
+        pi_package_root,
+        host,
+        gateway_port,
+        asset_port,
+        api_base_url=pi_api_base,
+    )
 
     try:
         status_snapshots = wait_for_readiness(

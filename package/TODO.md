@@ -2,16 +2,16 @@
 
 ## v0.2 Stubs (NotImplementedError today)
 
-- [ ] **MessageEnvelope encode/decode** (`protocol/envelope.py`)
+- [x] **MessageEnvelope encode/decode** (`protocol/envelope.py`)
       Wire-format serialization using msgpack + zstd compression.
 
-- [ ] **PersistentSpool** (`protocol/spool.py`)
+- [x] **OutboundSpool** (`transport/spool.py`)
       Disk-backed durable outbound message queue (enqueue, peek, dequeue, __len__).
 
-- [ ] **RequestDeduper** (`protocol/dedup.py`)
+- [x] **RequestDeduper** (`protocol/dedup.py`)
       Duplicate request detection and expiry (is_duplicate, mark_seen, expire).
 
-- [ ] **GatewayLeaseManager.process_subscription_request** (`gateway/lease_registry.py`)
+- [x] **GatewayLeaseManager.process_subscription_request** (`gateway/lease_registry.py`)
       Handle inbound subscription lease requests from assets.
 
 ## CI / Publish Pipeline

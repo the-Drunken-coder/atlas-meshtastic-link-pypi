@@ -25,6 +25,7 @@ def encode_asset_intent(
     subtype: str | None = None,
     alias: str | None = None,
     components: dict[str, Any] | None = None,
+    tracks: list[dict[str, Any]] | None = None,
 ) -> bytes:
     payload: dict[str, Any] = {
         "msg_type": ASSET_INTENT,
@@ -45,6 +46,8 @@ def encode_asset_intent(
         payload["alias"] = alias
     if components is not None:
         payload["components"] = components
+    if tracks is not None:
+        payload["tracks"] = tracks
     return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
 

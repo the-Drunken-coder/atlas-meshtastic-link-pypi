@@ -247,15 +247,15 @@ class GatewayOperationsRuntime:
             return
 
         server_ts = changes.get("timestamp")
-        if isinstance(server_ts, str) and server_ts:
-            self._last_since = server_ts
-        else:
-            self._last_since = datetime.now(timezone.utc).isoformat()
+        new_since = server_ts if isinstance(server_ts, str) and server_ts else datetime.now(timezone.utc).isoformat()
+
         await self._update_entity_index(changes)
         if not self._asset_subscriptions:
+            self._last_since = new_since
             return
         records = _records_from_changes(changes)
         if not records:
+            self._last_since = new_since
             return
 
         subscribed_union: set[str] = set()
@@ -277,10 +277,13 @@ class GatewayOperationsRuntime:
                     outbound.append(record)
 
         if not outbound:
+            self._last_since = new_since
             return
 
         # Keep broadcast pressure bounded.
         max_records = max(1, int(max(1.0, self._config.publish_max_messages_per_second)))
+        outbound.sort(key=_version_sort_key)
+        truncated = len(outbound) > max_records
         outbound = outbound[:max_records]
         if not self._consume_tokens(len(outbound)):
             return
@@ -289,6 +292,17 @@ class GatewayOperationsRuntime:
         if self._interaction_log is not None:
             self._interaction_log.record("GATEWAY_BROADCAST", f"records={len(outbound)}")
         log.info("[GATEWAY] Broadcast %d update records", len(outbound))
+
+        if truncated:
+            max_version = None
+            for record in outbound:
+                version = record.get("version")
+                if isinstance(version, str):
+                    if max_version is None or version > max_version:
+                        max_version = version
+            self._last_since = max_version if max_version is not None else new_since
+        else:
+            self._last_since = new_since
 
     async def _seed_entity_index(self) -> None:
         """Fetch the full dataset once at startup to seed the entity index."""
@@ -439,22 +453,23 @@ class GatewayOperationsRuntime:
         if not records:
             return
 
+        # Safety cap: prevent radio flooding from unexpectedly large task lists.
+        CHECKIN_TASK_HARD_CAP = 50
         max_records = max(1, int(max(1.0, self._config.publish_max_messages_per_second)))
-        if len(records) > max_records:
-            log.debug(
-                "[GATEWAY] Truncating checkin tasks from %d to %d for asset %s",
-                len(records),
-                max_records,
-                asset_id,
-            )
-            records = records[:max_records]
-        if not self._consume_tokens(len(records)):
-            log.debug(
-                "[GATEWAY] Rate limit exhausted; skipping checkin task broadcast (%d records) for asset %s",
+        if len(records) > CHECKIN_TASK_HARD_CAP:
+            log.error(
+                "[GATEWAY] Checkin returned %d tasks for asset %s, capping at %d",
                 len(records),
                 asset_id,
+                CHECKIN_TASK_HARD_CAP,
             )
-            return
+            records = records[:CHECKIN_TASK_HARD_CAP]
+        elif len(records) > max_records:
+            log.warning(
+                "[GATEWAY] Checkin task list large (%d), bypassing token bucket limits for asset %s",
+                len(records),
+                asset_id,
+            )
 
         payload = encode_gateway_update(records=records, meta={"reason": "checkin_tasks"})
         await self._radio.send(payload, destination="^all")
@@ -634,6 +649,16 @@ def _extract_version(record: dict[str, Any]) -> str | None:
         if val is not None:
             return val
     return record.get("updated_at")
+
+
+def _version_sort_key(record: dict[str, Any]) -> tuple[int, float]:
+    version = record.get("version")
+    if not isinstance(version, str) or not version:
+        return (0, 0.0)
+    try:
+        return (1, datetime.fromisoformat(version.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return (0, 0.0)
 
 
 def _records_from_changes(changes: dict[str, Any]) -> list[dict[str, Any]]:

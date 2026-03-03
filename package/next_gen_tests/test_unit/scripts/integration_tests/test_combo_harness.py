@@ -12,7 +12,7 @@ from scripts.integration_tests.combo_harness import (
     extract_pid_port_pairs,
     list_entity_tasks,
     resolve_world_state_path,
-    task_in_subscribed_section,
+    task_in_world_state_dict,
     validate_world_state_structure,
     wait_for_readiness,
     world_state_contains_task,
@@ -29,50 +29,37 @@ def test_extract_pid_port_pairs_filters_to_target_ports() -> None:
     assert pairs == {(1234, 8840), (2234, 8841)}
 
 
-def test_world_state_contains_task_across_sections() -> None:
-    subscribed_payload = {"subscribed": {"tasks": {"task-1": {"id": "task-1"}}}}
-    assert world_state_contains_task(subscribed_payload, "task-1") is True
-
-    passive_payload = {
-        "passive": {
-            "gateway": {
-                "tasks": {
-                    "tasks:task-2": {
-                        "id": "task-2",
-                    }
-                }
-            }
-        }
-    }
-    assert world_state_contains_task(passive_payload, "task-2") is True
+def test_world_state_contains_task_flat_structure() -> None:
+    flat_payload = {"tasks": {"task-1": {"id": "task-1"}}}
+    assert world_state_contains_task(flat_payload, "task-1") is True
 
     assert world_state_contains_task({}, "task-x") is False
+    assert world_state_contains_task({"tasks": {}}, "task-x") is False
 
 
-def test_task_in_subscribed_section() -> None:
-    subscribed_data = {"subscribed": {"tasks": {"task-1": {"id": "task-1"}}}}
-    assert task_in_subscribed_section(subscribed_data, "task-1") is True
+def test_task_in_world_state_dict() -> None:
+    data = {"tasks": {"task-1": {"id": "task-1"}}}
+    assert task_in_world_state_dict(data, "task-1") is True
 
-    passive_only = {"passive": {"gateway": {"tasks": {"task-2": {"id": "task-2"}}}}}
-    assert task_in_subscribed_section(passive_only, "task-2") is False
-
-    assert task_in_subscribed_section({}, "task-x") is False
+    assert task_in_world_state_dict(data, "task-2") is False
+    assert task_in_world_state_dict({}, "task-x") is False
 
 
 def test_validate_world_state_structure() -> None:
     valid = {
         "meta": {},
-        "subscribed": {"tasks": {}},
-        "passive": {"gateway": {}},
         "index": {},
+        "entities": {},
+        "tasks": {},
+        "objects": {},
     }
     assert validate_world_state_structure(valid) == []
 
-    missing_meta = {"subscribed": {"tasks": {}}, "passive": {"gateway": {}}, "index": {}}
+    missing_meta = {"index": {}, "entities": {}, "tasks": {}, "objects": {}}
     assert "meta" in validate_world_state_structure(missing_meta)
 
-    missing_subscribed_tasks = {"meta": {}, "subscribed": {}, "passive": {"gateway": {}}, "index": {}}
-    assert "subscribed.tasks" in validate_world_state_structure(missing_subscribed_tasks)
+    missing_tasks = {"meta": {}, "index": {}, "entities": {}, "objects": {}}
+    assert "tasks" in validate_world_state_structure(missing_tasks)
 
 
 def test_add_common_args() -> None:

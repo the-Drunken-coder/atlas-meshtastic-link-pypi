@@ -49,8 +49,9 @@ class _FakeBridge:
             "objects": self._changed_since.get("objects", []),
         }
 
-    async def publish_asset_intent(self, *, asset_id: str, intent: dict) -> None:  # noqa: ANN001
+    async def publish_asset_intent(self, *, asset_id: str, intent: dict) -> dict:  # noqa: ANN001
         self.published.append((asset_id, intent))
+        return {}
 
 
 def test_gateway_runtime_ingests_intent_and_broadcasts():
@@ -351,7 +352,7 @@ def test_gateway_runtime_marks_sync_stale_after_threshold():
     asyncio.run(_run())
 
 
-def test_forward_checkin_tasks_applies_truncation() -> None:
+def test_forward_checkin_tasks_bypasses_truncation() -> None:
     async def _run() -> None:
         radio = _FakeRadio()
         runtime = GatewayOperationsRuntime(
@@ -375,13 +376,13 @@ def test_forward_checkin_tasks_applies_truncation() -> None:
         decoded = decode_billboard_message(radio.sent[0][0])
         assert decoded is not None
         records = decoded.get("records", [])
-        assert len(records) == 2
-        assert [r.get("id") for r in records] == ["task-1", "task-2"]
+        assert len(records) == 3
+        assert [r.get("id") for r in records] == ["task-1", "task-2", "task-3"]
 
     asyncio.run(_run())
 
 
-def test_forward_checkin_tasks_skips_when_rate_limited() -> None:
+def test_forward_checkin_tasks_bypasses_rate_limit() -> None:
     async def _run() -> None:
         radio = _FakeRadio()
         runtime = GatewayOperationsRuntime(
@@ -395,7 +396,12 @@ def test_forward_checkin_tasks_skips_when_rate_limited() -> None:
             asset_id="asset-1",
             checkin_response={"tasks": [{"task_id": "task-1"}]},
         )
-        assert radio.sent == []
+        assert len(radio.sent) == 1
+        decoded = decode_billboard_message(radio.sent[0][0])
+        assert decoded is not None
+        records = decoded.get("records", [])
+        assert len(records) == 1
+        assert records[0].get("id") == "task-1"
 
     asyncio.run(_run())
 
@@ -471,5 +477,143 @@ def test_forward_checkin_tasks_extracts_metadata_version():
         records = decoded.get("records", [])
         assert len(records) == 1
         assert records[0]["version"] == "2026-03-01T12:00:00Z"
+
+    asyncio.run(_run())
+
+
+def test_poll_and_publish_preserves_last_since_on_rate_limit() -> None:
+    """When token bucket is exhausted, _last_since must NOT advance."""
+    async def _run() -> None:
+        radio = _FakeRadio()
+        bridge = _FakeBridge()
+        bridge._changed_since = {
+            "entities": [
+                {
+                    "entity_id": "e-1",
+                    "entity_type": "track",
+                    "subtype": "track",
+                    "metadata": {"updated_at": "2026-02-26T00:00:00Z"},
+                }
+            ],
+            "tasks": [],
+            "objects": [],
+            "timestamp": "2026-02-26T00:00:01Z",
+        }
+        runtime = GatewayOperationsRuntime(
+            radio=radio,
+            bridge=bridge,
+            config=GatewayConfig(publish_max_messages_per_second=1.0),
+            stop_event=asyncio.Event(),
+        )
+        await runtime.on_radio_message(
+            encode_asset_intent(
+                asset_id="asset-1",
+                subscriptions={"entities": ["e-1"]},
+                intent_seq=1,
+                intent_hash="h1",
+                generated_at_ms=1,
+                expected_max_silence_ms=10000,
+            ),
+            "asset-1",
+        )
+
+        original_last_since = runtime._last_since
+        # Exhaust the token bucket
+        runtime._sent_this_window = 999
+        runtime._send_window_started = __import__("time").monotonic()
+
+        await runtime._poll_and_publish()
+
+        # _last_since must remain unchanged — no data was actually broadcast
+        assert runtime._last_since == original_last_since
+        # Verify no gateway.update was sent (entity index broadcasts are independent)
+        from atlas_meshtastic_link.protocol.billboard_wire import decode_billboard_message as _decode
+        update_sends = [
+            s for s in radio.sent
+            if (_decode(s[0]) or {}).get("msg_type") == "atlas.gateway.update"
+            and (_decode(s[0]) or {}).get("meta", {}).get("reason") != "subscription_init"
+        ]
+        assert len(update_sends) == 0
+
+    asyncio.run(_run())
+
+
+def test_extract_version_with_non_dict_metadata():
+    """When metadata is not a dict, fall back to top-level updated_at."""
+    record = {
+        "entity_id": "e-1",
+        "metadata": "not-a-dict",
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+    assert _extract_version(record) == "2026-01-01T00:00:00Z"
+
+
+def test_extract_version_with_non_dict_metadata_no_fallback():
+    """When metadata is not a dict and no top-level updated_at, return None."""
+    record = {"entity_id": "e-1", "metadata": "not-a-dict"}
+    assert _extract_version(record) is None
+
+
+def test_forward_checkin_tasks_caps_at_hard_limit() -> None:
+    """When checkin returns more than the hard cap, records are truncated."""
+    async def _run() -> None:
+        radio = _FakeRadio()
+        runtime = GatewayOperationsRuntime(
+            radio=radio,
+            bridge=_FakeBridge(),
+            config=GatewayConfig(publish_max_messages_per_second=5.0),
+            stop_event=asyncio.Event(),
+        )
+        tasks = [{"task_id": f"task-{i}"} for i in range(60)]
+        await runtime._forward_checkin_tasks(
+            asset_id="asset-1",
+            checkin_response={"tasks": tasks},
+        )
+        assert len(radio.sent) == 1
+        decoded = decode_billboard_message(radio.sent[0][0])
+        assert decoded is not None
+        records = decoded.get("records", [])
+        assert len(records) == 50  # hard cap
+
+    asyncio.run(_run())
+
+
+def test_gateway_runtime_truncation_sends_oldest_versions_first() -> None:
+    async def _run() -> None:
+        radio = _FakeRadio()
+        bridge = _FakeBridge()
+        bridge._changed_since = {
+            "entities": [],
+            "tasks": [
+                {"task_id": "task-3", "entity_id": "asset-1", "metadata": {"updated_at": "2026-02-26T00:00:03Z"}},
+                {"task_id": "task-2", "entity_id": "asset-1", "metadata": {"updated_at": "2026-02-26T00:00:02Z"}},
+                {"task_id": "task-1", "entity_id": "asset-1", "metadata": {"updated_at": "2026-02-26T00:00:01Z"}},
+            ],
+            "objects": [],
+            "timestamp": "2026-02-26T00:00:04Z",
+        }
+        runtime = GatewayOperationsRuntime(
+            radio=radio,
+            bridge=bridge,
+            config=GatewayConfig(publish_max_messages_per_second=2.0),
+            stop_event=asyncio.Event(),
+        )
+        await runtime.on_radio_message(
+            encode_asset_intent(
+                asset_id="asset-1",
+                subscriptions={"tasks": ["self"]},
+                intent_seq=1,
+                intent_hash="h1",
+                generated_at_ms=1,
+                expected_max_silence_ms=10000,
+            ),
+            "asset-1",
+        )
+        await runtime._poll_and_publish()
+
+        decoded = decode_billboard_message(radio.sent[-1][0])
+        assert decoded is not None
+        assert [r.get("id") for r in decoded.get("records", [])] == ["task-1", "task-2"]
+        assert runtime._last_since == "2026-02-26T00:00:02Z"
 
     asyncio.run(_run())

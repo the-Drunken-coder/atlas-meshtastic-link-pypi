@@ -43,9 +43,8 @@ def test_handle_gateway_update_stores_task_in_subscribed_for_tasks_self(tmp_path
             sender="gateway-node",
         )
 
-        subscribed = world.get("subscribed")
-        assert isinstance(subscribed, dict)
-        tasks = subscribed.get("tasks", {})
+        tasks = world.get("tasks")
+        assert isinstance(tasks, dict)
         assert "task-1" in tasks
         assert tasks["task-1"].get("data", {}).get("entity_id") == "asset-1"
 
@@ -104,8 +103,8 @@ def test_handle_gateway_update_tasks_self_uses_store_asset_id_fallback(tmp_path)
             },
             sender="gateway-node",
         )
-        subscribed = world.get("subscribed")
-        tasks = (subscribed or {}).get("tasks", {})
+        tasks = world.get("tasks")
+        assert isinstance(tasks, dict)
         assert "task-9" in tasks
 
     asyncio.run(_run())

@@ -18,7 +18,26 @@ from atlas_meshtastic_link.protocol.discovery_wire import (
     decode_discovery_message,
     encode_discovery_message,
 )
-from tests.helpers.fake_radio import FakeRadio
+from next_gen_tests.helpers.fake_radio import FakeRadio
+
+
+def test_router_sets_ready_event_on_run_start():
+    async def _run() -> None:
+        gateway_radio = FakeRadio(node_id="!gateway", channel_url="meshtastic://atlas-command", peers={})
+        stop_event = asyncio.Event()
+        ready_event = asyncio.Event()
+        router = GatewayRouter(
+            radio=gateway_radio,
+            stop_event=stop_event,
+            poll_seconds=0.05,
+            ready_event=ready_event,
+        )
+        router_task = asyncio.create_task(router.run())
+        await asyncio.wait_for(ready_event.wait(), timeout=1.0)
+        stop_event.set()
+        await asyncio.wait_for(router_task, timeout=1.0)
+
+    asyncio.run(_run())
 
 
 def test_router_handles_discovery_and_provision_success():

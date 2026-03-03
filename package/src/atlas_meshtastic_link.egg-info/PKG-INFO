@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: atlas-meshtastic-link
-Version: 1.0.4
+Version: 1.0.5
 Summary: Dual-mode Meshtastic link for Atlas Command — gateway and asset in one package.
 Author: ATLAS Team
 License-Expression: MIT
@@ -192,18 +192,18 @@ scripts/
 
 ```bash
 # Unit tests (no hardware required)
-PYTHONPATH=src python -m pytest tests/test_unit -q -m "not hardware"
+PYTHONPATH=src python -m pytest next_gen_tests/test_unit -q -m "not hardware"
 
 # All tests including hardware integration
-PYTHONPATH=src python -m pytest tests -q --hardware
+PYTHONPATH=src python -m pytest next_gen_tests -q --hardware
 ```
 
 ## Hardware Integration Tests
 
-Hardware tests requiring physical Meshtastic radios belong in `tests/test_integration/` and should be marked with `@pytest.mark.hardware`. To exclude them from the default run:
+Hardware tests requiring physical Meshtastic radios belong in `next_gen_tests/test_integration/` and should be marked with `@pytest.mark.hardware`. To exclude them from the default run:
 
 ```bash
-PYTHONPATH=src python -m pytest tests -q -m "not hardware"
+PYTHONPATH=src python -m pytest next_gen_tests -q -m "not hardware"
 ```
 
 Requirements for hardware tests:

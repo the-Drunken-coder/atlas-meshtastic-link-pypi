@@ -1,9 +1,17 @@
 """Integration test configuration - hardware discovery and skip logic."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from atlas_meshtastic_link.transport.discovery import PortInfo, discover_usb_ports
+
+# Ensure package root on path for combo_harness
+_project_root = Path(__file__).resolve().parents[2]
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 
 def _discover_ports_safe() -> list[PortInfo]:
@@ -13,16 +21,14 @@ def _discover_ports_safe() -> list[PortInfo]:
         return []
 
 
-def pytest_collection_modifyitems(config, items):  # noqa: ARG001
-    """Auto-skip hardware tests only when no radios are detected."""
-    ports = _discover_ports_safe()
-    if ports:
+@pytest.fixture(scope="session", autouse=True)
+def _kill_stale_combo_before_hardware():
+    """Kill leftover combo listeners only when radios are present for hardware tests."""
+    if len(_discover_ports_safe()) < 2:
         return
+    from scripts.integration_tests.combo_harness import kill_stale_port_listeners
 
-    skip_hw = pytest.mark.skip(reason="no Meshtastic USB radios detected")
-    for item in items:
-        if "hardware" in item.keywords:
-            item.add_marker(skip_hw)
+    kill_stale_port_listeners([8840, 8841], log_prefix="[integration]")
 
 
 @pytest.fixture(scope="session")
