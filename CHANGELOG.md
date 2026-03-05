@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.7] - 2026-03-05
+
+- Hardened integration test harness to validate Atlas API URLs target localhost only, rejecting remote hosts and embedded credentials
+- Removed stale `egg-info` build artifacts from source tree (was reporting incorrect version 1.0.5)
+- Clarified log messages in provisioning and gateway router: replaced "credentials" with "channel config" and "token bucket limits" with "rate limits"
+- Added Semgrep `nosemgrep` annotations to integration test HTTP calls to document intentional dynamic URL usage
+
 ## [1.0.6] - 2026-03-03
 
 - Added message deduplication layer (`protocol.dedup`) to prevent processing duplicate protocol messages across unreliable transports
