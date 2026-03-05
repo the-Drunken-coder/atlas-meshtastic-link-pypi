@@ -156,7 +156,7 @@ class GatewayRouter:
             sent = await self._send_credentials(sender, session)
             if sent:
                 log.info(
-                    "[ROUTER] Re-sent provision credentials to %s (session=%s)",
+                    "[ROUTER] Re-sent provision channel config to %s (session=%s)",
                     sender,
                     session.session_id,
                 )
@@ -233,7 +233,7 @@ class GatewayRouter:
         sent = await self._send_credentials(sender, session)
         if not sent:
             return
-        log.info("[ROUTER] Provision credentials sent to %s (session=%s)", sender, session.session_id)
+        log.info("[ROUTER] Provision channel config sent to %s (session=%s)", sender, session.session_id)
 
     async def _gateway_identity(self) -> str:
         if self._gateway_id:

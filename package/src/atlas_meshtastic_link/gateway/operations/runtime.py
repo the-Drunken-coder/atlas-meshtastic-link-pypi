@@ -466,7 +466,7 @@ class GatewayOperationsRuntime:
             records = records[:CHECKIN_TASK_HARD_CAP]
         elif len(records) > max_records:
             log.warning(
-                "[GATEWAY] Checkin task list large (%d), bypassing token bucket limits for asset %s",
+                "[GATEWAY] Checkin task list large (%d), bypassing rate limits for asset %s",
                 len(records),
                 asset_id,
             )

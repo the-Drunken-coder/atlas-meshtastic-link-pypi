@@ -118,7 +118,7 @@ class ProvisioningHandshake:
             elif awaiting_credentials and now >= next_response_retry_at:
                 if challenge_response_attempts >= self._max_challenge_response_retries:
                     log.warning(
-                        "[PROVISION] Timed out waiting for credentials from %s (session=%s)",
+                        "[PROVISION] Timed out waiting for channel config from %s (session=%s)",
                         gateway_sender,
                         challenge_session_id or "legacy",
                     )
@@ -192,7 +192,7 @@ class ProvisioningHandshake:
                 incoming_session = optional_session_id(message.get("session_id"))
                 if awaiting_credentials and challenge_session_id and incoming_session and incoming_session != challenge_session_id:
                     log.debug(
-                        "[PROVISION] Ignoring credentials from %s with mismatched session %s (expected %s)",
+                        "[PROVISION] Ignoring channel config from %s with mismatched session %s (expected %s)",
                         gateway_sender,
                         incoming_session,
                         challenge_session_id,
@@ -215,7 +215,7 @@ class ProvisioningHandshake:
                     session_id=challenge_session_id,
                 )
                 log.info(
-                    "[PROVISION] Applied command channel credentials from %s (session=%s)",
+                    "[PROVISION] Applied command channel config from %s (session=%s)",
                     gateway_sender,
                     challenge_session_id or "legacy",
                 )

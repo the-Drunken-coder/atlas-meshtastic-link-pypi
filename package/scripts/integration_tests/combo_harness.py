@@ -15,16 +15,28 @@ import time
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 DEFAULT_ATLAS_API_URL = "http://localhost:8000"
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _validate_local_api_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Unsupported Atlas API URL scheme: {parsed.scheme!r}")
+    if parsed.hostname not in _LOCAL_HOSTS:
+        raise ValueError(f"Atlas API URL must target localhost for integration tests: {url!r}")
+    if parsed.username or parsed.password:
+        raise ValueError("Atlas API URL must not include credentials")
+    return url.rstrip("/")
 
 
 def get_atlas_api_url() -> str:
     """Return Atlas Command API URL from env or default localhost."""
     url = os.environ.get("ATLAS_COMMAND_API_URL", DEFAULT_ATLAS_API_URL)
-    return url.rstrip("/")
+    return _validate_local_api_url(url)
 
 
 def atlas_command_available(timeout: float = 2.0) -> bool:
@@ -32,6 +44,7 @@ def atlas_command_available(timeout: float = 2.0) -> bool:
     try:
         url = f"{get_atlas_api_url()}/health"
         req = Request(url=url, method="GET")
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
     except (URLError, OSError):
@@ -59,6 +72,7 @@ def request_json(
         headers["content-type"] = "application/json"
     request = Request(url=url, data=data, method=method.upper(), headers=headers)
     try:
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8")
             if not body:
