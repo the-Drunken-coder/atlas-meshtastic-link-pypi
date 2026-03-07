@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.8] - 2026-03-07
+
+- EdgeClient: Subscription management with persistent intent file updates for entities, tasks, and objects
+- EdgeClient: Component state persistence via set_components and update_component with merged updates
+- EdgeClient: Command queuing via send_command that appends to existing custom_commands list
+- EdgeClient: Defensive world state reading returning empty dict for missing or malformed JSON files
+- ProvisioningHandshake: Handling of PROVISION_REJECTED messages with specific reason codes
+- ProvisioningHandshake: Session ID validation to ignore stale CHALLENGE messages during handshake
+
 ## [1.0.7] - 2026-03-05
 
 - Hardened integration test harness to validate Atlas API URLs target localhost only, rejecting remote hosts and embedded credentials
