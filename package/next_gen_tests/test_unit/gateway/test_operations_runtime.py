@@ -527,7 +527,9 @@ def test_poll_and_publish_preserves_last_since_on_rate_limit() -> None:
         # _last_since must remain unchanged — no data was actually broadcast
         assert runtime._last_since == original_last_since
         # Verify no gateway.update was sent (entity index broadcasts are independent)
-        from atlas_meshtastic_link.protocol.billboard_wire import decode_billboard_message as _decode
+        from atlas_meshtastic_link.protocol.billboard_wire import (
+            decode_billboard_message as _decode,
+        )
         update_sends = [
             s for s in radio.sent
             if (_decode(s[0]) or {}).get("msg_type") == "atlas.gateway.update"

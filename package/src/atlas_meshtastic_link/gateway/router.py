@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import logging
 import secrets
 import time
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from atlas_meshtastic_link.gateway.interaction_log import InteractionLog

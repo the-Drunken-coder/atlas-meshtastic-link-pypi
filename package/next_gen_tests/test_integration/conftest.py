@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from atlas_meshtastic_link.transport.discovery import PortInfo, discover_usb_ports
 
 # Ensure package root on path for combo_harness

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 
 import httpx
-
 from atlas_meshtastic_link.gateway import http_bridge as bridge_module
 from atlas_meshtastic_link.gateway.http_bridge import AtlasHttpBridge
 

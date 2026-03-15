@@ -6,7 +6,6 @@ import secrets
 import string
 
 import pytest
-
 from atlas_meshtastic_link.transport.serial_radio import SerialRadioAdapter
 
 _ASCII_ALPHABET = string.ascii_letters + string.digits

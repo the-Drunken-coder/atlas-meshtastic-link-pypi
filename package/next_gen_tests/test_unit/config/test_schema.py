@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from atlas_meshtastic_link.config.schema import (
     DEFAULT_GATEWAY_SECRETS_WARNING,
     ConfigError,

@@ -6,7 +6,10 @@ import time
 from typing import Any
 
 from atlas_meshtastic_link.asset.intent_store import AssetIntentStore
-from atlas_meshtastic_link.protocol.subscriptions import TASKS_SELF_KEY, subscription_keys
+from atlas_meshtastic_link.protocol.subscriptions import (
+    TASKS_SELF_KEY,
+    subscription_keys,
+)
 from atlas_meshtastic_link.state.overhearing import OverhearingFilter
 from atlas_meshtastic_link.state.world_state import WorldStateStore
 

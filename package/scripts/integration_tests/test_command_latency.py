@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-import time
 from pathlib import Path
 
 # Allow running as script: python scripts/integration_tests/test_command_latency.py

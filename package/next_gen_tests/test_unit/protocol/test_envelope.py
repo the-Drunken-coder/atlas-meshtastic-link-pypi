@@ -4,7 +4,6 @@ from __future__ import annotations
 import time
 
 import pytest
-
 from atlas_meshtastic_link.protocol import envelope
 
 pytest.importorskip("msgpack")

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from scripts.integration_tests.combo_harness import (
     create_task,
     wait_for_task_in_world_state,

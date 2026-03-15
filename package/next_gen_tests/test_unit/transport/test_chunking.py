@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from atlas_meshtastic_link.transport.chunking import (
     FLAG_ACK,
     FLAG_NACK,

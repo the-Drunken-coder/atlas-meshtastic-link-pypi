@@ -124,7 +124,9 @@ async def _run_gateway(  # noqa: ANN001
     """Start gateway mode (HTTP bridge + discovery router + business runtime)."""
     from atlas_meshtastic_link.gateway.http_bridge import AtlasHttpBridge
     from atlas_meshtastic_link.gateway.interaction_log import InteractionLog
-    from atlas_meshtastic_link.gateway.operations.runtime import GatewayOperationsRuntime
+    from atlas_meshtastic_link.gateway.operations.runtime import (
+        GatewayOperationsRuntime,
+    )
     from atlas_meshtastic_link.gateway.router import GatewayRouter
 
     interaction_log = InteractionLog(cfg.gateway.interaction_log_path)
@@ -220,8 +222,8 @@ async def _run_asset(  # noqa: ANN001
     status_hook: Callable[[dict[str, Any]], None] | None,
 ) -> None:
     """Start asset mode (discovery/provisioning + business loop)."""
-    from atlas_meshtastic_link.asset.runner import AssetRunner
     from atlas_meshtastic_link.asset.provisioning import ProvisioningHandshake
+    from atlas_meshtastic_link.asset.runner import AssetRunner
 
     log.info("[LINK] Asset mode starting (auto_provision=%s)", cfg.asset.auto_provision)
     if on_ready:

@@ -4,7 +4,6 @@ from __future__ import annotations
 import time
 
 import pytest
-
 from scripts.integration_tests.combo_harness import (
     get_entity,
 )

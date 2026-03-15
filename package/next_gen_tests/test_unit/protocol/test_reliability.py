@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import asyncio
 
-from atlas_meshtastic_link.protocol.reliability import ReliabilityStrategy, WindowedReliability
+from atlas_meshtastic_link.protocol.reliability import (
+    ReliabilityStrategy,
+    WindowedReliability,
+)
 
 
 def test_windowed_is_reliability_strategy():

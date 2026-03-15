@@ -5,7 +5,6 @@ import asyncio
 import uuid
 
 import pytest
-
 from atlas_meshtastic_link.transport.serial_radio import SerialRadioAdapter
 
 

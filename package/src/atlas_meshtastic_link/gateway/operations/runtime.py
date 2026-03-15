@@ -2,17 +2,16 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import json
 import logging
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from httpx import HTTPError
-
 from atlas_meshtastic_link.config.schema import GatewayConfig
 from atlas_meshtastic_link.gateway.interaction_log import InteractionLog
+from atlas_meshtastic_link.gateway.operations.registry import OperationRegistry
 from atlas_meshtastic_link.protocol.billboard_wire import (
     ASSET_INTENT,
     ASSET_INTENT_DIFF,
@@ -21,9 +20,12 @@ from atlas_meshtastic_link.protocol.billboard_wire import (
     encode_gateway_index,
     encode_gateway_update,
 )
-from atlas_meshtastic_link.protocol.subscriptions import TASKS_SELF_KEY, subscription_keys
-from atlas_meshtastic_link.gateway.operations.registry import OperationRegistry
+from atlas_meshtastic_link.protocol.subscriptions import (
+    TASKS_SELF_KEY,
+    subscription_keys,
+)
 from atlas_meshtastic_link.state.subscriptions import LeaseRegistry
+from httpx import HTTPError
 
 log = logging.getLogger(__name__)
 ephemeral_log = logging.getLogger("atlas_meshtastic_link.sync.ephemeral")

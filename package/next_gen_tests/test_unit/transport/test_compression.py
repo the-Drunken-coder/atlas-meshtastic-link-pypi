@@ -4,16 +4,15 @@ from __future__ import annotations
 import json
 
 from atlas_meshtastic_link.transport.compression import (
-    PREFIX_RAW,
-    PREFIX_ZLIB,
     _FIELD_ALIASES,
     _SHORT_TO_LONG,
+    PREFIX_RAW,
+    PREFIX_ZLIB,
     expand_keys,
     maybe_compress,
     maybe_decompress,
     shorten_keys,
 )
-
 
 # ---------------------------------------------------------------------------
 # Compression tests

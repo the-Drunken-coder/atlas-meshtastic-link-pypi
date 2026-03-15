@@ -4,7 +4,6 @@ from __future__ import annotations
 import time
 
 import pytest
-
 from scripts.integration_tests.combo_harness import (
     kill_stale_port_listeners,
     start_combo_webui,

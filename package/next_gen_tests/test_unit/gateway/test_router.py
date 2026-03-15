@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
 from atlas_meshtastic_link.gateway.router import GatewayRouter
 from atlas_meshtastic_link.protocol.discovery_wire import (
     CHALLENGE,

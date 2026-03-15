@@ -212,8 +212,8 @@ def _stream_output(pipe: Any, prefix: str) -> None:
     finally:
         try:
             pipe.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Error closing pipe during cleanup: %s", exc)
 
 
 def wait_for_readiness(
@@ -431,8 +431,8 @@ def wait_for_task_in_world_state(
                 data = json.loads(world_state_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict) and world_state_contains_task(data, task_id):
                     return time.perf_counter()
-            except (OSError, json.JSONDecodeError):
-                pass
+            except (OSError, json.JSONDecodeError) as exc:
+                log.debug("Error reading world_state file %s during poll: %s", world_state_path, exc)
         time.sleep(poll_interval_s)
 
     raise TimeoutError(
@@ -459,8 +459,8 @@ def wait_for_tasks_in_world_state(
                             found.add(tid)
                     if found >= set(task_ids):
                         return
-            except (OSError, json.JSONDecodeError):
-                pass
+            except (OSError, json.JSONDecodeError) as exc:
+                log.debug("Error reading world_state file %s during poll: %s", world_state_path, exc)
         time.sleep(poll_interval_s)
 
     missing = set(task_ids) - found
@@ -626,8 +626,8 @@ def wait_for_gateway_ready(host: str, gateway_port: int, timeout_s: float) -> di
             status_code, payload = request_json("GET", gateway_url, timeout=2.0)
             if status_code == 200 and isinstance(payload, dict) and payload.get("state") == "running":
                 return payload
-        except (URLError, OSError, RuntimeError):
-            pass
+        except (URLError, OSError, RuntimeError) as exc:
+            log.debug("Gateway status check failed during poll: %s", exc)
         time.sleep(1.0)
     raise TimeoutError(f"Gateway not ready after {timeout_s:.0f}s")
 

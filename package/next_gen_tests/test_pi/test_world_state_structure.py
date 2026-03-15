@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from scripts.integration_tests.combo_harness import (
     create_task,
     validate_world_state_structure,

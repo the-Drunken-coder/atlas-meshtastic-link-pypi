@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import asdict
 import json
 import logging
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +15,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 try:
     from scripts._webui_common import (
+        LOG_FORMAT,
         InMemoryLogBufferHandler,
         LinkProcessController,
-        LOG_FORMAT,
         autostart_serial_only,
         build_asset_config,
         default_config_path,
@@ -28,9 +28,9 @@ try:
     )
 except ModuleNotFoundError:  # pragma: no cover - direct script execution path
     from _webui_common import (  # type: ignore[no-redef]
+        LOG_FORMAT,
         InMemoryLogBufferHandler,
         LinkProcessController,
-        LOG_FORMAT,
         autostart_serial_only,
         build_asset_config,
         default_config_path,

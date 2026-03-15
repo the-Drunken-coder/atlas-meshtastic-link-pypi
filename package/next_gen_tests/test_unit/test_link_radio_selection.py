@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from atlas_meshtastic_link import _link
 from atlas_meshtastic_link.config.schema import LinkConfig, RadioConfig
 from atlas_meshtastic_link.transport.discovery import PortInfo

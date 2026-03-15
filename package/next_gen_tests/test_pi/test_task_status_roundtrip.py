@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from scripts.integration_tests.combo_harness import (
     acknowledge_task,
     create_task,

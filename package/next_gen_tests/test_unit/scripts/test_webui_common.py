@@ -7,7 +7,6 @@ import logging
 import time
 
 from atlas_meshtastic_link.config.schema import LinkConfig, RadioConfig
-
 from scripts import _webui_common
 
 
