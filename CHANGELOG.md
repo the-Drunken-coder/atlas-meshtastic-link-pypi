@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.9] - 2026-03-15
+
+- Improved gateway operation runtime with robust lifecycle management and error handling
+- Refined asset synchronization timing logic to improve network efficiency
+- Enhanced gateway startup and shutdown reliability in the core link module
+- Refactored integration test combo harness for improved resource isolation and test stability
+- Removed unused imports from WebUI scripts and across the test suite
+
 ## [1.0.8] - 2026-03-07
 
 - EdgeClient: Subscription management with persistent intent file updates for entities, tasks, and objects
