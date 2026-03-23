@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.10] - 2026-03-23
+- Refactored gateway operations runtime to improve operation lifecycle management, registry handling, and execution reliability.
+- Enhanced serial radio transport with robust connection handling and improved spool management for message queuing.
+- Streamlined asset synchronization and provisioning logic, including intent store optimizations for edge clients.
+- Extended HTTP bridge capabilities for better gateway-to-backend communication and lease registry integration.
+- Reorganized test infrastructure into next-generation suite with expanded coverage for integration, unit, and platform integration (PI) scenarios.
+- Updated WebUI scripts (asset, gateway, combo) with refined argument parsing and diagnostic output.
+- Refined protocol envelope handling and compression utilities for more efficient wire format processing.
+
 ## [1.0.9] - 2026-03-15
 
 - Improved gateway operation runtime with robust lifecycle management and error handling
