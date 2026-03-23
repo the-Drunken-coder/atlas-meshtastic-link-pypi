@@ -1,4 +1,5 @@
 """SQLite-backed spool for durable outbound message queuing."""
+
 from __future__ import annotations
 
 import logging
@@ -12,7 +13,7 @@ log = logging.getLogger(__name__)
 
 class OutboundSpool:
     """A durable FIFO queue for outbound mesh messages, backed by SQLite.
-    
+
     This class is thread-safe.
     """
 
@@ -26,7 +27,7 @@ class OutboundSpool:
 
     def _open(self) -> None:
         db_path = str(self._path) if self._path is not None else ":memory:"
-        
+
         # Connect with isolation_level=None for autocommit
         self._conn = sqlite3.connect(
             db_path,
@@ -36,8 +37,7 @@ class OutboundSpool:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA auto_vacuum=FULL")
-        self._conn.execute(
-            """
+        self._conn.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 destination TEXT NOT NULL,
@@ -45,8 +45,7 @@ class OutboundSpool:
                 created_at REAL NOT NULL,
                 attempts INTEGER DEFAULT 0
             )
-            """
-        )
+            """)
 
     def enqueue(self, destination: str, payload: bytes) -> None:
         """Add a message to the end of the spool."""
@@ -83,7 +82,7 @@ class OutboundSpool:
 
     def peek_next(self) -> tuple[int, str, bytes, int] | None:
         """Return the next message from the spool (id, destination, payload, attempts), or None.
-        
+
         Messages are ordered by creation time then insertion order (FIFO).
         """
         if self._conn is None:
@@ -121,7 +120,9 @@ class OutboundSpool:
 
         with self._lock:
             try:
-                self._conn.execute("UPDATE messages SET attempts = attempts + 1 WHERE id = ?", (message_id,))
+                self._conn.execute(
+                    "UPDATE messages SET attempts = attempts + 1 WHERE id = ?", (message_id,)
+                )
             except sqlite3.Error as exc:
                 log.error("[SPOOL] Failed to increment attempt for message %d: %s", message_id, exc)
 
@@ -129,7 +130,7 @@ class OutboundSpool:
         """Remove all messages from the spool."""
         if self._conn is None:
             return
-            
+
         with self._lock:
             try:
                 self._conn.execute("DELETE FROM messages")

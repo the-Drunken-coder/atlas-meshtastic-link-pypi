@@ -1,4 +1,5 @@
 """GatewayRouter - receive, dispatch, and reply loop."""
+
 from __future__ import annotations
 
 import asyncio
@@ -77,7 +78,9 @@ class GatewayRouter:
             self._ready_event.set()
         while not self._stop_event.is_set():
             try:
-                raw, sender = await asyncio.wait_for(self._radio.receive(), timeout=self._poll_seconds)
+                raw, sender = await asyncio.wait_for(
+                    self._radio.receive(), timeout=self._poll_seconds
+                )
             except asyncio.TimeoutError:
                 self._expire_stale_assets()
                 continue
@@ -141,7 +144,9 @@ class GatewayRouter:
                 last_activity_at=now,
             )
             self._provision_sessions[sender] = session
-            self._log_interaction("PROVISION_REQUEST", f"asset={sender} session={session.session_id}")
+            self._log_interaction(
+                "PROVISION_REQUEST", f"asset={sender} session={session.session_id}"
+            )
 
         session.last_activity_at = now
         if session.credentials_sent_at is not None:
@@ -162,7 +167,10 @@ class GatewayRouter:
                 )
             return
 
-        if session.challenge_sent_at and (now - session.challenge_sent_at) < self._challenge_resend_interval_seconds:
+        if (
+            session.challenge_sent_at
+            and (now - session.challenge_sent_at) < self._challenge_resend_interval_seconds
+        ):
             log.debug(
                 "[ROUTER] Ignoring duplicate provision request from %s (session=%s challenge_age=%.2fs)",
                 sender,
@@ -189,7 +197,9 @@ class GatewayRouter:
         response_session_id = optional_session_id(message.get("session_id"))
 
         if sender in self._connected_assets:
-            log.debug("[ROUTER] Ignoring challenge response from already connected asset %s", sender)
+            log.debug(
+                "[ROUTER] Ignoring challenge response from already connected asset %s", sender
+            )
             self._provision_sessions.pop(sender, None)
             return
 
@@ -226,14 +236,22 @@ class GatewayRouter:
                 session_id=session.session_id,
             )
             self._provision_sessions.pop(sender, None)
-            log.warning("[ROUTER] Invalid challenge response from %s (session=%s)", sender, session.session_id)
-            self._log_interaction("PROVISION_REJECTED", f"asset={sender} reason=invalid_response_code")
+            log.warning(
+                "[ROUTER] Invalid challenge response from %s (session=%s)",
+                sender,
+                session.session_id,
+            )
+            self._log_interaction(
+                "PROVISION_REJECTED", f"asset={sender} reason=invalid_response_code"
+            )
             return
 
         sent = await self._send_credentials(sender, session)
         if not sent:
             return
-        log.info("[ROUTER] Provision channel config sent to %s (session=%s)", sender, session.session_id)
+        log.info(
+            "[ROUTER] Provision channel config sent to %s (session=%s)", sender, session.session_id
+        )
 
     async def _gateway_identity(self) -> str:
         if self._gateway_id:
@@ -316,7 +334,10 @@ class GatewayRouter:
                 asset_id,
                 self._asset_lease_timeout_seconds,
             )
-            self._log_interaction("LEASE_EXPIRED", f"asset={asset_id} timeout={self._asset_lease_timeout_seconds:.1f}s")
+            self._log_interaction(
+                "LEASE_EXPIRED",
+                f"asset={asset_id} timeout={self._asset_lease_timeout_seconds:.1f}s",
+            )
         self._emit_assets_changed()
 
     def _handle_provision_complete(self, sender: str, message: dict[str, Any]) -> None:
@@ -346,8 +367,14 @@ class GatewayRouter:
         self._asset_last_seen[sender] = time.monotonic()
         if not was_connected:
             self._emit_assets_changed()
-        log.info("[ROUTER] Provisioning completed for asset %s (session=%s)", sender, complete_session_id or "legacy")
-        self._log_interaction("PROVISION_COMPLETE", f"asset={sender} session={complete_session_id or 'legacy'}")
+        log.info(
+            "[ROUTER] Provisioning completed for asset %s (session=%s)",
+            sender,
+            complete_session_id or "legacy",
+        )
+        self._log_interaction(
+            "PROVISION_COMPLETE", f"asset={sender} session={complete_session_id or 'legacy'}"
+        )
 
     def _expire_stale_sessions(self) -> None:
         now = time.monotonic()

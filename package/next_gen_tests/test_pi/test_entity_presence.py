@@ -1,4 +1,5 @@
 """PI test: verify entity exists in Atlas API after asset publishes intent."""
+
 from __future__ import annotations
 
 import pytest

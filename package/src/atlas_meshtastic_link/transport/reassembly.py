@@ -1,4 +1,5 @@
 """MessageReassembler - buckets, TTL expiry, gap detection."""
+
 from __future__ import annotations
 
 import time
@@ -83,8 +84,6 @@ class MessageReassembler:
         received_indices = set(bucket.received.keys())
         highest = max(received_indices) if received_indices else 0
         missing = [
-            seq
-            for seq in sorted(expected_indices - received_indices)
-            if force or seq < highest
+            seq for seq in sorted(expected_indices - received_indices) if force or seq < highest
         ]
         return missing

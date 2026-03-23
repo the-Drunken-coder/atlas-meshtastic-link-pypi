@@ -1,9 +1,12 @@
 """Shared test fixtures for atlas_meshtastic_link."""
+
 from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -11,15 +14,25 @@ _project_root = Path(__file__).resolve().parents[1]
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+discover_usb_ports: Callable[[], Any] | None = None
 try:
-    from atlas_meshtastic_link.transport.discovery import discover_usb_ports
+    from atlas_meshtastic_link.transport.discovery import (
+        discover_usb_ports as _discover_usb_ports,
+    )
 except ImportError:
-    discover_usb_ports = None
+    pass
+else:
+    discover_usb_ports = _discover_usb_ports
 
+atlas_command_available: Callable[[], bool] | None = None
 try:
-    from scripts.integration_tests.combo_harness import atlas_command_available
+    from scripts.integration_tests.combo_harness import (
+        atlas_command_available as _atlas_command_available,
+    )
 except ImportError:
-    atlas_command_available = None
+    pass
+else:
+    atlas_command_available = _atlas_command_available
 
 
 def pytest_collection_modifyitems(config, items):

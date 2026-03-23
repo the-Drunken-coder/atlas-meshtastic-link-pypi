@@ -1,4 +1,5 @@
 """OverhearingFilter — passive ingest routing for mesh traffic."""
+
 from __future__ import annotations
 
 import logging

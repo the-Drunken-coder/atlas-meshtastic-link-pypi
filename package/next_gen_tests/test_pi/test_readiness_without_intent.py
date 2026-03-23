@@ -1,4 +1,5 @@
 """PI test: readiness completes without waiting for asset intent."""
+
 from __future__ import annotations
 
 import time
@@ -35,8 +36,6 @@ def test_readiness_without_intent(pi_package_root, request) -> None:
         elapsed = time.perf_counter() - start
         timeout_s = request.config.getoption("--readiness-timeout")
         print(f"\n[pi-readiness] Completed in {elapsed:.1f}s")
-        assert elapsed < timeout_s, (
-            f"Readiness took {elapsed:.1f}s, exceeding timeout {timeout_s}s"
-        )
+        assert elapsed < timeout_s, f"Readiness took {elapsed:.1f}s, exceeding timeout {timeout_s}s"
     finally:
         terminate_combo_process(process)

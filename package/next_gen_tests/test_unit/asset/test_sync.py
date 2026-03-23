@@ -10,15 +10,18 @@ from atlas_meshtastic_link.state.world_state import WorldStateStore
 
 def test_handle_gateway_update_stores_task_in_subscribed_for_tasks_self(tmp_path):
     """When asset has tasks:self, tasks with matching entity_id go to subscribed."""
+
     async def _run() -> None:
         intent_path = tmp_path / "intent.json"
         intent_path.write_text(
-            json.dumps({
-                "asset_id": "asset-1",
-                "entity_type": "asset",
-                "subtype": "rover",
-                "subscriptions": {"entities": [], "tasks": ["self"], "objects": []},
-            }),
+            json.dumps(
+                {
+                    "asset_id": "asset-1",
+                    "entity_type": "asset",
+                    "subtype": "rover",
+                    "subscriptions": {"entities": [], "tasks": ["self"], "objects": []},
+                }
+            ),
             encoding="utf-8",
         )
         world = WorldStateStore()
@@ -64,9 +67,11 @@ def test_handle_gateway_index_stores_entity_ids(tmp_path):
 
         index = world.get("index")
         assert isinstance(index, dict)
-        assert index.get("entities") == ["e-1", "e-2"]
-        assert None not in index.get("entities")
-        assert "" not in index.get("entities")
+        entities = index.get("entities")
+        assert isinstance(entities, list)
+        assert entities == ["e-1", "e-2"]
+        assert None not in entities
+        assert "" not in entities
         assert index.get("source_node") == "gateway-node"
         assert index.get("updated_at") is not None
 
@@ -108,3 +113,75 @@ def test_handle_gateway_update_tasks_self_uses_store_asset_id_fallback(tmp_path)
         assert "task-9" in tasks
 
     asyncio.run(_run())
+
+
+def test_handle_gateway_update_removes_tasks_self_tombstone_with_top_level_entity_id(tmp_path):
+    async def _run() -> None:
+        intent_path = tmp_path / "intent.json"
+        intent_path.write_text(
+            json.dumps(
+                {
+                    "asset_id": "asset-1",
+                    "entity_type": "asset",
+                    "subtype": "rover",
+                    "subscriptions": {"entities": [], "tasks": ["self"], "objects": []},
+                }
+            ),
+            encoding="utf-8",
+        )
+        world = WorldStateStore()
+        intent = AssetIntentStore(intent_path, asset_id="asset-1")
+        sync = AssetSync(world_state=world, intent_store=intent)
+
+        await sync.handle_gateway_update(
+            {
+                "records": [
+                    {
+                        "kind": "tasks",
+                        "id": "task-1",
+                        "data": {
+                            "task_id": "task-1",
+                            "entity_id": "asset-1",
+                            "status": "pending",
+                        },
+                    }
+                ]
+            },
+            sender="gateway-node",
+        )
+        tasks = world.get("tasks")
+        assert isinstance(tasks, dict)
+        assert "task-1" in tasks
+
+        await sync.handle_gateway_update(
+            {
+                "records": [
+                    {
+                        "kind": "tasks",
+                        "id": "task-1",
+                        "entity_id": "asset-1",
+                        "deleted": True,
+                        "version": "2026-02-26T00:00:00Z",
+                    }
+                ]
+            },
+            sender="gateway-node",
+        )
+
+        tasks = world.get("tasks")
+        assert isinstance(tasks, dict)
+        assert "task-1" not in tasks
+
+    asyncio.run(_run())
+
+
+def test_world_state_remove_record_touches_meta_for_none_payload() -> None:
+    world = WorldStateStore()
+    world.put("tasks", {"task-none": None})
+    before = world.snapshot()["meta"].get("last_updated_epoch")
+
+    world.remove_record(group="tasks", record_id="task-none")
+
+    after_snapshot = world.snapshot()
+    assert "task-none" not in after_snapshot["tasks"]
+    assert after_snapshot["meta"].get("last_updated_epoch") != before

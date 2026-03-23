@@ -1,4 +1,5 @@
 """PI test: task delivered when asset starts after task creation."""
+
 from __future__ import annotations
 
 import pytest
@@ -44,9 +45,7 @@ def test_reconnect_delivery(
             log_prefix="[pi-reconnect]",
         )
 
-        task_id, _ = create_task(
-            pi_api_base, pi_entity_id, task_id_prefix="reconnect"
-        )
+        task_id, _ = create_task(pi_api_base, pi_entity_id, task_id_prefix="reconnect")
         pi_task_cleanup.register(task_id)
 
         asset_process = start_asset_only(pi_package_root, host, asset_port)

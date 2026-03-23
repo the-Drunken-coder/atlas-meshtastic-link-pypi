@@ -1,4 +1,5 @@
 """Unit tests for transport.discovery — USB auto-discovery."""
+
 from __future__ import annotations
 
 from atlas_meshtastic_link.transport.discovery import KNOWN_VID_PIDS, PortInfo

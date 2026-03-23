@@ -1,4 +1,5 @@
 """Wire helpers for gateway discovery/provisioning messages."""
+
 from __future__ import annotations
 
 import json

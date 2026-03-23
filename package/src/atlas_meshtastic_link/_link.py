@@ -1,4 +1,5 @@
-﻿"""Top-level run() entry point - wires config, radio, transport, and mode runner."""
+"""Top-level run() entry point - wires config, radio, transport, and mode runner."""
+
 from __future__ import annotations
 
 import asyncio
@@ -104,7 +105,10 @@ def _build_radio(cfg: LinkConfig):  # noqa: ANN202
                 if "already in use" not in str(exc):
                     raise
                 busy_ports.append(candidate.device)
-                log.warning("[LINK] Auto-discovered port %s is busy; trying next candidate", candidate.device)
+                log.warning(
+                    "[LINK] Auto-discovered port %s is busy; trying next candidate",
+                    candidate.device,
+                )
 
         raise RuntimeError(
             "No available auto-discovered radio ports; all discovered ports are in use: "
@@ -256,7 +260,10 @@ async def _run_asset(  # noqa: ANN001
             provisioned = await handshake.run()
             if provisioned:
                 connected_channel = await _read_channel_url(radio)
-                log.info("[LINK] Asset provisioning complete; command channel joined (%s)", connected_channel or "unknown")
+                log.info(
+                    "[LINK] Asset provisioning complete; command channel joined (%s)",
+                    connected_channel or "unknown",
+                )
                 _emit_status(
                     status_hook,
                     channel_connected=True,
@@ -283,7 +290,14 @@ async def _run_asset(  # noqa: ANN001
     runner_task = asyncio.create_task(asset_runner.run(), name="atlas_asset_runner")
     stop_task = asyncio.create_task(stop_event.wait(), name="atlas_asset_stop_wait")
     try:
-        done, _ = await asyncio.wait({runner_task, stop_task, usage_task}, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait(
+            {
+                runner_task,
+                stop_task,
+                usage_task,
+            },
+            return_when=asyncio.FIRST_COMPLETED,
+        )
         if runner_task in done:
             exc = runner_task.exception()
             if exc is not None:
@@ -304,7 +318,15 @@ async def _read_channel_url(radio) -> str | None:  # noqa: ANN001
         return None
     try:
         channel = await get_channel()
-    except (AttributeError, ConnectionError, OSError, RuntimeError, TimeoutError, TypeError, ValueError):
+    except (
+        AttributeError,
+        ConnectionError,
+        OSError,
+        RuntimeError,
+        TimeoutError,
+        TypeError,
+        ValueError,
+    ):
         return None
     if not channel:
         return None
@@ -317,7 +339,15 @@ async def _read_channel_usage_summary(radio) -> str | None:  # noqa: ANN001
         return None
     try:
         usage = await get_usage()
-    except (AttributeError, ConnectionError, OSError, RuntimeError, TimeoutError, TypeError, ValueError):
+    except (
+        AttributeError,
+        ConnectionError,
+        OSError,
+        RuntimeError,
+        TimeoutError,
+        TypeError,
+        ValueError,
+    ):
         return None
     if not usage:
         return None

@@ -1,4 +1,5 @@
 """Unit tests for transport.chunking - binary chunk protocol."""
+
 from __future__ import annotations
 
 import pytest

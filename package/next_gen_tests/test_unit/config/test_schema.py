@@ -1,4 +1,5 @@
 """Unit tests for config.schema — LinkConfig and load_config."""
+
 from __future__ import annotations
 
 import json
@@ -129,9 +130,7 @@ def test_asset_mode_with_gateway_section_warns_default_secrets(
     assert DEFAULT_GATEWAY_SECRETS_WARNING in caplog.text
 
 
-def test_gateway_mode_warns_default_secrets(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-):
+def test_gateway_mode_warns_default_secrets(tmp_path: Path, caplog: pytest.LogCaptureFixture):
     p = tmp_path / "gateway_cfg.json"
     p.write_text(json.dumps({"mode": "gateway"}), encoding="utf-8")
     load_config(p)

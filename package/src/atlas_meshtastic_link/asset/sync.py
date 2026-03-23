@@ -1,4 +1,5 @@
 """Asset sync logic for gateway pushes and passive overhearing."""
+
 from __future__ import annotations
 
 import logging
@@ -38,11 +39,7 @@ class AssetSync:
         intent_payload = self._intent_store.load()
         subscriptions = subscription_keys(intent_payload.get("subscriptions", {}))
         self._overhearing.set_subscriptions(subscriptions)
-        raw_asset_id = (
-            intent_payload.get("asset_id")
-            or self._intent_store.asset_id
-            or "asset-1"
-        )
+        raw_asset_id = intent_payload.get("asset_id") or self._intent_store.asset_id or "asset-1"
         asset_id = str(raw_asset_id)
 
         records = payload.get("records")
@@ -60,6 +57,18 @@ class AssetSync:
             if not item_id:
                 continue
             key = f"{kind}:{item_id}"
+            is_subscribed = key in subscriptions
+            if not is_subscribed and kind == "tasks" and TASKS_SELF_KEY in subscriptions:
+                data = entry.get("data")
+                task_entity_id = entry.get("entity_id")
+                if task_entity_id is None and isinstance(data, dict):
+                    task_entity_id = data.get("entity_id")
+                is_subscribed = task_entity_id is not None and str(task_entity_id) == asset_id
+            if not (is_subscribed or self._overhearing.should_ingest("gateway_update", key)):
+                continue
+            if entry.get("deleted"):
+                self._world_state.remove_record(group=kind, record_id=item_id)
+                continue
             record = {
                 "kind": kind,
                 "id": item_id,
@@ -69,19 +78,11 @@ class AssetSync:
                 "received_at": now,
                 "version": entry.get("version"),
             }
-            is_subscribed = key in subscriptions
-            if not is_subscribed and kind == "tasks" and TASKS_SELF_KEY in subscriptions:
-                data = entry.get("data")
-                task_entity_id = data.get("entity_id") if isinstance(data, dict) else None
-                is_subscribed = (
-                    task_entity_id is not None and str(task_entity_id) == asset_id
-                )
-            if is_subscribed or self._overhearing.should_ingest("gateway_update", key):
-                self._world_state.upsert_record(
-                    group=kind,
-                    record_id=item_id,
-                    record=record,
-                )
+            self._world_state.upsert_record(
+                group=kind,
+                record_id=item_id,
+                record=record,
+            )
 
     async def handle_gateway_index(self, payload: dict[str, Any], *, sender: str) -> None:
         entity_ids = payload.get("entity_ids", [])

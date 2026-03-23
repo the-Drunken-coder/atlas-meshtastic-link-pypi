@@ -1,4 +1,5 @@
 """Small local web UI for gateway-mode smoke testing."""
+
 from __future__ import annotations
 
 import argparse
@@ -26,7 +27,7 @@ try:
         validate_same_origin,
     )
 except ModuleNotFoundError:  # pragma: no cover - direct script execution path
-    from _webui_common import (  # type: ignore[no-redef]
+    from _webui_common import (  # type: ignore[import-not-found, no-redef]
         LOG_FORMAT,
         InMemoryLogBufferHandler,
         LinkProcessController,
@@ -406,14 +407,20 @@ INDEX_HTML = """<!doctype html>
 """
 
 
-def create_gateway_app(*, auto_start: bool = True, config_path: str | Path | None = None) -> FastAPI:
+def create_gateway_app(
+    *, auto_start: bool = True, config_path: str | Path | None = None
+) -> FastAPI:
     """Build FastAPI app for local gateway UI."""
     setup_script_logging()
     handler = InMemoryLogBufferHandler(max_lines=1000)
     handler.setFormatter(logging.Formatter(LOG_FORMAT))
     install_log_capture(handler, ["atlas_meshtastic_link", LOGGER_NAME])
     controller = LinkProcessController(mode="gateway", logger=log)
-    config_file = Path(config_path) if config_path is not None else default_config_path(__file__, "gateway_webui.json")
+    config_file = (
+        Path(config_path)
+        if config_path is not None
+        else default_config_path(__file__, "gateway_webui.json")
+    )
     try:
         startup_config = load_mode_config(config_file, "gateway")
         log.info("[WEBUI] loaded gateway config from %s", config_file)
@@ -539,7 +546,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    import uvicorn
+    import uvicorn  # type: ignore[import-not-found]
 
     uvicorn.run(
         create_gateway_app(config_path=args.config),

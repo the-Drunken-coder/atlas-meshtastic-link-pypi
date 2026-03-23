@@ -26,6 +26,10 @@ class _FakeRadio:
 class _FakeBridge:
     def __init__(self) -> None:
         self.published: list[tuple[str, dict]] = []
+        self.changed_since_calls: list[dict] = []
+        self.full_dataset_calls: list[dict] = []
+        self._changed_since_pages: list[dict] | None = None
+        self._full_dataset_pages: list[dict] | None = None
         self._changed_since: dict = {
             "entities": [
                 {
@@ -39,10 +43,18 @@ class _FakeBridge:
             "objects": [],
         }
 
-    async def get_changed_since(self, *, since, limit_per_type=None):  # noqa: ANN001, ARG002
+    async def get_changed_since(self, *, since, limit_per_type=None, **kwargs):  # noqa: ANN001
+        self.changed_since_calls.append(
+            {"since": since, "limit_per_type": limit_per_type, **kwargs}
+        )
+        if self._changed_since_pages:
+            return self._changed_since_pages.pop(0)
         return self._changed_since
 
-    async def get_full_dataset(self) -> dict:
+    async def get_full_dataset(self, **kwargs):  # noqa: ANN001
+        self.full_dataset_calls.append(dict(kwargs))
+        if self._full_dataset_pages:
+            return self._full_dataset_pages.pop(0)
         return {
             "entities": self._changed_since.get("entities", []),
             "tasks": self._changed_since.get("tasks", []),
@@ -62,7 +74,9 @@ def test_gateway_runtime_ingests_intent_and_broadcasts():
         runtime = GatewayOperationsRuntime(
             radio=radio,
             bridge=bridge,
-            config=GatewayConfig(api_poll_interval_seconds=1.0, publish_max_messages_per_second=5.0),
+            config=GatewayConfig(
+                api_poll_interval_seconds=1.0, publish_max_messages_per_second=5.0
+            ),
             stop_event=stop_event,
         )
 
@@ -212,7 +226,9 @@ def test_update_entity_index_tracks_adds_and_removes():
             stop_event=stop_event,
         )
 
-        await runtime._update_entity_index({"entities": [{"entity_id": "e-1"}, {"entity_id": "e-2"}]})
+        await runtime._update_entity_index(
+            {"entities": [{"entity_id": "e-1"}, {"entity_id": "e-2"}]}
+        )
         assert runtime._known_entity_ids == {"e-1", "e-2"}
         assert radio.sent
         first_payload, first_destination = radio.sent[-1]
@@ -223,11 +239,21 @@ def test_update_entity_index_tracks_adds_and_removes():
         assert decoded_first.get("entity_ids") == ["e-1", "e-2"]
 
         runtime._last_index_diff_broadcast = 0.0
-        await runtime._update_entity_index({"deleted_entities": [{"entity_id": "e-1"}]})
+        await runtime._update_entity_index({"deleted_entities": [{"id": "e-1", "type": "entity"}]})
         assert runtime._known_entity_ids == {"e-2"}
         decoded_second = decode_billboard_message(radio.sent[-1][0])
         assert decoded_second is not None
         assert decoded_second.get("entity_ids") == ["e-2"]
+
+        runtime._last_index_diff_broadcast = 0.0
+        await runtime._update_entity_index(
+            {"deleted_entities": [{"entity_id": "e-2", "type": "entity"}]}
+        )
+        assert runtime._known_entity_ids == set()
+        decoded_third = decode_billboard_message(radio.sent[-1][0])
+        assert decoded_third is not None
+        assert decoded_third.get("msg_type") == "atlas.gateway.index"
+        assert decoded_third.get("entity_ids") == []
 
     asyncio.run(_run())
 
@@ -274,6 +300,7 @@ def test_gateway_runtime_rejects_diff_on_base_hash_mismatch():
 
 def test_gateway_runtime_broadcasts_task_for_tasks_self_subscription():
     """When asset has tasks:self, tasks with matching entity_id are broadcast."""
+
     async def _run() -> None:
         radio = _FakeRadio()
         bridge = _FakeBridge()
@@ -294,7 +321,9 @@ def test_gateway_runtime_broadcasts_task_for_tasks_self_subscription():
         runtime = GatewayOperationsRuntime(
             radio=radio,
             bridge=bridge,
-            config=GatewayConfig(api_poll_interval_seconds=1.0, publish_max_messages_per_second=5.0),
+            config=GatewayConfig(
+                api_poll_interval_seconds=1.0, publish_max_messages_per_second=5.0
+            ),
             stop_event=stop_event,
         )
 
@@ -324,12 +353,152 @@ def test_gateway_runtime_broadcasts_task_for_tasks_self_subscription():
     asyncio.run(_run())
 
 
+def test_gateway_runtime_drains_changed_since_cursor_pages() -> None:
+    async def _run() -> None:
+        radio = _FakeRadio()
+        bridge = _FakeBridge()
+        bridge._changed_since_pages = [
+            {
+                "entities": [
+                    {
+                        "entity_id": "e-1",
+                        "entity_type": "track",
+                        "metadata": {"updated_at": "2026-02-26T00:00:01Z"},
+                    }
+                ],
+                "tasks": [
+                    {
+                        "task_id": "task-1",
+                        "entity_id": "asset-1",
+                        "metadata": {"updated_at": "2026-02-26T00:00:02Z"},
+                    }
+                ],
+                "objects": [],
+                "timestamp": "2026-02-26T00:00:03Z",
+                "has_more_entities": True,
+                "next_entity_cursor": "entity-cursor-1",
+            },
+            {
+                "entities": [
+                    {
+                        "entity_id": "e-2",
+                        "entity_type": "track",
+                        "metadata": {"updated_at": "2026-02-26T00:00:03Z"},
+                    }
+                ],
+                "tasks": [],
+                "objects": [],
+                "timestamp": "2026-02-26T00:00:04Z",
+            },
+        ]
+        runtime = GatewayOperationsRuntime(
+            radio=radio,
+            bridge=bridge,
+            config=GatewayConfig(publish_max_messages_per_second=5.0),
+            stop_event=asyncio.Event(),
+        )
+        await runtime.on_radio_message(
+            encode_asset_intent(
+                asset_id="asset-1",
+                subscriptions={"entities": ["e-1", "e-2"], "tasks": ["self"]},
+                intent_seq=1,
+                intent_hash="h1",
+                generated_at_ms=1,
+                expected_max_silence_ms=10000,
+            ),
+            "asset-1",
+        )
+        starting_since = runtime._last_since
+
+        await runtime._poll_and_publish()
+
+        assert len(bridge.changed_since_calls) == 2
+        assert bridge.changed_since_calls[0] == {
+            "since": starting_since,
+            "limit_per_type": runtime._config.changed_since_limit_per_type,
+        }
+        assert bridge.changed_since_calls[1] == {
+            "since": starting_since,
+            "limit_per_type": runtime._config.changed_since_limit_per_type,
+            "entity_cursor": "entity-cursor-1",
+        }
+        decoded = decode_billboard_message(radio.sent[-1][0])
+        assert decoded is not None
+        ids = {record.get("id") for record in decoded.get("records", [])}
+        assert {"e-1", "e-2", "task-1"} <= ids
+        assert runtime._last_since == "2026-02-26T00:00:04Z"
+
+    asyncio.run(_run())
+
+
+def test_gateway_runtime_drains_full_dataset_pages_for_seed_and_subscription_push() -> None:
+    async def _run() -> None:
+        radio = _FakeRadio()
+        bridge = _FakeBridge()
+        bridge._full_dataset_pages = [
+            {
+                "entities": [{"entity_id": "e-1", "entity_type": "track"}],
+                "tasks": [],
+                "objects": [],
+                "has_more_entities": True,
+                "next_entity_cursor": "entity-cursor-1",
+            },
+            {
+                "entities": [{"entity_id": "e-2", "entity_type": "track"}],
+                "tasks": [{"task_id": "task-1", "entity_id": "asset-1"}],
+                "objects": [],
+            },
+        ]
+        runtime = GatewayOperationsRuntime(
+            radio=radio,
+            bridge=bridge,
+            config=GatewayConfig(publish_max_messages_per_second=5.0),
+            stop_event=asyncio.Event(),
+        )
+
+        await runtime._seed_entity_index()
+        assert runtime._known_entity_ids == {"e-1", "e-2"}
+        assert bridge.full_dataset_calls == [{}, {"entity_cursor": "entity-cursor-1"}]
+
+        bridge.full_dataset_calls.clear()
+        bridge._full_dataset_pages = [
+            {
+                "entities": [{"entity_id": "e-1", "entity_type": "track"}],
+                "tasks": [],
+                "objects": [],
+                "has_more_entities": True,
+                "next_entity_cursor": "entity-cursor-2",
+            },
+            {
+                "entities": [{"entity_id": "e-2", "entity_type": "track"}],
+                "tasks": [{"task_id": "task-1", "entity_id": "asset-1"}],
+                "objects": [],
+            },
+        ]
+
+        await runtime._push_current_subscribed_records(
+            asset_id="asset-1",
+            keys={"entities:e-1", "entities:e-2", "tasks:self"},
+        )
+
+        assert bridge.full_dataset_calls == [{}, {"entity_cursor": "entity-cursor-2"}]
+        decoded = decode_billboard_message(radio.sent[-1][0])
+        assert decoded is not None
+        assert decoded.get("meta", {}).get("reason") == "subscription_init"
+        ids = {record.get("id") for record in decoded.get("records", [])}
+        assert {"e-1", "e-2", "task-1"} <= ids
+
+    asyncio.run(_run())
+
+
 def test_gateway_runtime_marks_sync_stale_after_threshold():
     async def _run() -> None:
         runtime = GatewayOperationsRuntime(
             radio=_FakeRadio(),
             bridge=_FakeBridge(),
-            config=GatewayConfig(sync_stale_after_seconds=0.01, sync_health_summary_interval_seconds=5.0),
+            config=GatewayConfig(
+                sync_stale_after_seconds=0.01, sync_health_summary_interval_seconds=5.0
+            ),
             stop_event=asyncio.Event(),
         )
         await runtime.on_radio_message(
@@ -453,8 +622,61 @@ def test_records_from_changes_extracts_metadata_version():
     assert records[2]["version"] == "2026-01-03T00:00:00Z"
 
 
+def test_records_from_changes_includes_deletion_tombstones():
+    """deleted_* arrays should yield tombstone records for subscribers."""
+    changes = {
+        "entities": [{"entity_id": "e-live"}],
+        "deleted_entities": [{"id": "e-gone", "deleted_at": "2026-02-01T00:00:00Z"}],
+        "deleted_tasks": [
+            {"id": "t-gone", "entity_id": "asset-1", "deleted_at": "2026-02-02T00:00:00Z"}
+        ],
+        "deleted_objects": [{"object_id": "o-gone", "deleted_at": "2026-02-03T00:00:00Z"}],
+    }
+    records = _records_from_changes(changes)
+    by_key = {(r["kind"], r["id"]): r for r in records}
+    assert "deleted" not in by_key[("entities", "e-live")]
+    assert by_key[("entities", "e-gone")] == {
+        "kind": "entities",
+        "id": "e-gone",
+        "data": None,
+        "deleted": True,
+        "version": "2026-02-01T00:00:00Z",
+    }
+    assert by_key[("tasks", "t-gone")] == {
+        "kind": "tasks",
+        "id": "t-gone",
+        "data": None,
+        "entity_id": "asset-1",
+        "deleted": True,
+        "version": "2026-02-02T00:00:00Z",
+    }
+    assert by_key[("objects", "o-gone")] == {
+        "kind": "objects",
+        "id": "o-gone",
+        "data": None,
+        "deleted": True,
+        "version": "2026-02-03T00:00:00Z",
+    }
+
+
+def test_records_from_changes_accepts_legacy_string_tombstones():
+    changes = {
+        "deleted_entities": ["e-gone"],
+        "deleted_tasks": ["t-gone"],
+        "deleted_objects": ["o-gone"],
+    }
+    records = _records_from_changes(changes)
+    assert {(record["kind"], record["id"]) for record in records} == {
+        ("entities", "e-gone"),
+        ("tasks", "t-gone"),
+        ("objects", "o-gone"),
+    }
+    assert all(record["deleted"] is True for record in records)
+
+
 def test_forward_checkin_tasks_extracts_metadata_version():
     """Checkin tasks with metadata block should have version extracted correctly."""
+
     async def _run() -> None:
         radio = _FakeRadio()
         runtime = GatewayOperationsRuntime(
@@ -483,6 +705,7 @@ def test_forward_checkin_tasks_extracts_metadata_version():
 
 def test_poll_and_publish_preserves_last_since_on_rate_limit() -> None:
     """When token bucket is exhausted, _last_since must NOT advance."""
+
     async def _run() -> None:
         radio = _FakeRadio()
         bridge = _FakeBridge()
@@ -530,8 +753,10 @@ def test_poll_and_publish_preserves_last_since_on_rate_limit() -> None:
         from atlas_meshtastic_link.protocol.billboard_wire import (
             decode_billboard_message as _decode,
         )
+
         update_sends = [
-            s for s in radio.sent
+            s
+            for s in radio.sent
             if (_decode(s[0]) or {}).get("msg_type") == "atlas.gateway.update"
             and (_decode(s[0]) or {}).get("meta", {}).get("reason") != "subscription_init"
         ]
@@ -558,6 +783,7 @@ def test_extract_version_with_non_dict_metadata_no_fallback():
 
 def test_forward_checkin_tasks_caps_at_hard_limit() -> None:
     """When checkin returns more than the hard cap, records are truncated."""
+
     async def _run() -> None:
         radio = _FakeRadio()
         runtime = GatewayOperationsRuntime(
@@ -587,9 +813,21 @@ def test_gateway_runtime_truncation_sends_oldest_versions_first() -> None:
         bridge._changed_since = {
             "entities": [],
             "tasks": [
-                {"task_id": "task-3", "entity_id": "asset-1", "metadata": {"updated_at": "2026-02-26T00:00:03Z"}},
-                {"task_id": "task-2", "entity_id": "asset-1", "metadata": {"updated_at": "2026-02-26T00:00:02Z"}},
-                {"task_id": "task-1", "entity_id": "asset-1", "metadata": {"updated_at": "2026-02-26T00:00:01Z"}},
+                {
+                    "task_id": "task-3",
+                    "entity_id": "asset-1",
+                    "metadata": {"updated_at": "2026-02-26T00:00:03Z"},
+                },
+                {
+                    "task_id": "task-2",
+                    "entity_id": "asset-1",
+                    "metadata": {"updated_at": "2026-02-26T00:00:02Z"},
+                },
+                {
+                    "task_id": "task-1",
+                    "entity_id": "asset-1",
+                    "metadata": {"updated_at": "2026-02-26T00:00:01Z"},
+                },
             ],
             "objects": [],
             "timestamp": "2026-02-26T00:00:04Z",

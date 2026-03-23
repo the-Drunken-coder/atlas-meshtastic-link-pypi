@@ -1,4 +1,5 @@
 """Unit tests for asset.provisioning - ProvisioningHandshake."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +14,7 @@ from atlas_meshtastic_link.protocol.discovery_wire import (
     GATEWAY_PRESENT,
     PROVISION_COMPLETE,
     PROVISION_CREDENTIALS,
+    PROVISION_REJECTED,
     PROVISION_REQUEST,
     decode_discovery_message,
     encode_discovery_message,
@@ -22,7 +24,9 @@ from next_gen_tests.helpers.fake_radio import FakeRadio
 
 def _build_radios() -> tuple[dict[str, FakeRadio], FakeRadio, FakeRadio]:
     radios: dict[str, FakeRadio] = {}
-    gateway_radio = FakeRadio(node_id="!gateway", channel_url="meshtastic://atlas-command", peers=radios)
+    gateway_radio = FakeRadio(
+        node_id="!gateway", channel_url="meshtastic://atlas-command", peers=radios
+    )
     asset_radio = FakeRadio(node_id="!asset", channel_url="meshtastic://public", peers=radios)
     radios[gateway_radio.node_id] = gateway_radio
     radios[asset_radio.node_id] = asset_radio
@@ -32,7 +36,9 @@ def _build_radios() -> tuple[dict[str, FakeRadio], FakeRadio, FakeRadio]:
 def test_provisioning_handshake_success():
     async def _run() -> None:
         radios: dict[str, FakeRadio] = {}
-        gateway_radio = FakeRadio(node_id="!gateway", channel_url="meshtastic://atlas-command", peers=radios)
+        gateway_radio = FakeRadio(
+            node_id="!gateway", channel_url="meshtastic://atlas-command", peers=radios
+        )
         asset_radio = FakeRadio(node_id="!asset", channel_url="meshtastic://public", peers=radios)
         radios[gateway_radio.node_id] = gateway_radio
         radios[asset_radio.node_id] = asset_radio
@@ -71,7 +77,9 @@ def test_provisioning_handshake_success():
 def test_provisioning_fails_with_challenge_mismatch():
     async def _run() -> None:
         radios: dict[str, FakeRadio] = {}
-        gateway_radio = FakeRadio(node_id="!gateway", channel_url="meshtastic://atlas-command", peers=radios)
+        gateway_radio = FakeRadio(
+            node_id="!gateway", channel_url="meshtastic://atlas-command", peers=radios
+        )
         asset_radio = FakeRadio(node_id="!asset", channel_url="meshtastic://public", peers=radios)
         radios[gateway_radio.node_id] = gateway_radio
         radios[asset_radio.node_id] = asset_radio
@@ -108,7 +116,9 @@ def test_provisioning_fails_with_challenge_mismatch():
 def test_provisioning_stops_request_retries_after_challenge():
     async def _run() -> None:
         radios: dict[str, FakeRadio] = {}
-        gateway_radio = FakeRadio(node_id="!gateway", channel_url="meshtastic://atlas-command", peers=radios)
+        gateway_radio = FakeRadio(
+            node_id="!gateway", channel_url="meshtastic://atlas-command", peers=radios
+        )
         asset_radio = FakeRadio(node_id="!asset", channel_url="meshtastic://public", peers=radios)
         radios[gateway_radio.node_id] = gateway_radio
         radios[asset_radio.node_id] = asset_radio
@@ -407,7 +417,7 @@ def test_provisioning_ignores_stale_credentials_session_id():
     ],
 )
 def test_provisioning_fails_when_credentials_channel_url_is_blank_or_missing(
-    credentials_fields: dict[str, str]
+    credentials_fields: dict[str, str],
 ):
     async def _run() -> None:
         _, gateway_radio, asset_radio = _build_radios()

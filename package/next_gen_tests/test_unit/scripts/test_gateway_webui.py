@@ -1,15 +1,16 @@
 """Unit tests for scripts.gateway_webui."""
+
 from __future__ import annotations
 
 import time
 
 import pytest
 
-TestClient = pytest.importorskip(
+pytest.importorskip(
     "fastapi.testclient",
     reason="fastapi is optional; webui script tests require it",
-).TestClient
-
+)
+from fastapi.testclient import TestClient
 from scripts import _webui_common, gateway_webui
 
 

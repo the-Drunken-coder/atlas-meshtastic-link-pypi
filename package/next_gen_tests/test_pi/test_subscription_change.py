@@ -1,4 +1,5 @@
 """PI test: modify subscription at runtime; task delivered after change."""
+
 from __future__ import annotations
 
 import json
@@ -68,9 +69,7 @@ def test_subscription_change(
             log_prefix="[pi-subscription]",
         )
 
-        task_id, _ = create_task(
-            pi_api_base, pi_entity_id, task_id_prefix="sub"
-        )
+        task_id, _ = create_task(pi_api_base, pi_entity_id, task_id_prefix="sub")
         pi_task_cleanup.register(task_id)
 
         subs = original_intent.get("subscriptions") or {}
@@ -90,9 +89,7 @@ def test_subscription_change(
     finally:
         if original_intent is not None and intent_path is not None and intent_path.exists():
             try:
-                intent_path.write_text(
-                    json.dumps(original_intent, indent=2), encoding="utf-8"
-                )
+                intent_path.write_text(json.dumps(original_intent, indent=2), encoding="utf-8")
             except Exception as exc:
                 print(f"[pi-subscription] Failed to restore intent: {exc}")
         terminate_combo_process(process)

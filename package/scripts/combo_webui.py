@@ -1,4 +1,5 @@
 """Run gateway and asset web UIs together with combined terminal logs."""
+
 from __future__ import annotations
 
 import argparse
@@ -8,6 +9,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import TextIO
 
 log = logging.getLogger(__name__)
 
@@ -114,7 +116,9 @@ def main() -> int:
         default=1.0,
         help="Delay before starting the asset web UI after gateway launch",
     )
-    parser.add_argument("--reload", action="store_true", help="Enable uvicorn reload for both scripts")
+    parser.add_argument(
+        "--reload", action="store_true", help="Enable uvicorn reload for both scripts"
+    )
     parser.add_argument(
         "--gateway-config",
         default=str(default_gateway_config),
@@ -152,7 +156,13 @@ def main() -> int:
                 pass
 
 
-def _run(args, gateway_script: Path, asset_script: Path, package_root: Path, log_fh) -> int:  # noqa: ANN001
+def _run(
+    args: argparse.Namespace,
+    gateway_script: Path,
+    asset_script: Path,
+    package_root: Path,
+    log_fh: TextIO | None,
+) -> int:
     gateway_process = _start_process(
         "gateway",
         gateway_script,

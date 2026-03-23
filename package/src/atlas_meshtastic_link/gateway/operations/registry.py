@@ -1,4 +1,5 @@
 """Message operation registry for gateway-side business traffic."""
+
 from __future__ import annotations
 
 import inspect
@@ -23,4 +24,3 @@ class OperationRegistry:
         if inspect.isawaitable(result):
             await result
         return True
-

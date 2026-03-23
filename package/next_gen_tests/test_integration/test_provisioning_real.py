@@ -1,4 +1,5 @@
 """Integration test: gateway discovery/provisioning smoke over real radios."""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +23,9 @@ async def _await_discovery_presence(
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     while True:
         await asset_radio.send(
-            encode_discovery_message(DISCOVERY_SEARCH, asset_id="test-asset", asset_node_id=asset_node_id),
+            encode_discovery_message(
+                DISCOVERY_SEARCH, asset_id="test-asset", asset_node_id=asset_node_id
+            ),
             destination="^all",
         )
         window_end = min(deadline, asyncio.get_running_loop().time() + 2.0)
@@ -87,7 +90,9 @@ def test_provisioning_discovery_smoke(two_radio_ports: tuple[str, str]):
             try:
                 message, sender = await _await_discovery_presence(asset_radio, asset_node_id)
             except TimeoutError:
-                pytest.skip("radios detected but no gateway discovery presence was observed in time")
+                pytest.skip(
+                    "radios detected but no gateway discovery presence was observed in time"
+                )
             assert message.get("op") == GATEWAY_PRESENT
             assert isinstance(message.get("gateway_id"), str)
             assert sender

@@ -1,4 +1,5 @@
 """Reliability strategy interfaces and basic windowed ACK tracking."""
+
 from __future__ import annotations
 
 import asyncio
@@ -28,7 +29,9 @@ class ReliabilityStrategy(Protocol):
 class WindowedReliability:
     """In-memory ACK tracker used by windowed transport implementations."""
 
-    def __init__(self, *, round_trip_timeout_seconds: float = 1.0, max_round_trips: int = 6) -> None:
+    def __init__(
+        self, *, round_trip_timeout_seconds: float = 1.0, max_round_trips: int = 6
+    ) -> None:
         self._round_trip_timeout_seconds = max(0.2, float(round_trip_timeout_seconds))
         self._max_round_trips = max(1, int(max_round_trips))
         self._pending: dict[bytes, asyncio.Event] = {}

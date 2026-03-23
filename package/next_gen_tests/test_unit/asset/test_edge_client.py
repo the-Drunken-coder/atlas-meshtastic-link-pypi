@@ -1,4 +1,5 @@
 """Unit tests for asset.edge_client — EdgeClient."""
+
 from __future__ import annotations
 
 import asyncio

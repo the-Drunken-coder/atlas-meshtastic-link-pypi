@@ -1,10 +1,14 @@
 """Unit tests for transport.serial_radio."""
+
 from __future__ import annotations
 
 import asyncio
+import builtins
 import json
 import queue
 import uuid
+from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 import pytest
 from atlas_meshtastic_link.transport.chunking import (
@@ -94,6 +98,31 @@ def test_serial_adapter_releases_lock_on_close():
     asyncio.run(second.close())
 
 
+def test_serial_close_tolerates_missing_pubsub(monkeypatch: pytest.MonkeyPatch):
+    port = _unique_port_name("COM")
+    adapter = SerialRadioAdapter(port=port, connect=False)
+    adapter._subscribed = True  # noqa: SLF001
+
+    original_import = cast(Any, builtins.__import__)
+
+    def _missing_pubsub(
+        name: str,
+        globals: Mapping[str, object] | None = None,
+        locals: Mapping[str, object] | None = None,
+        fromlist: Sequence[str] = (),
+        level: int = 0,
+    ) -> Any:
+        if name == "pubsub" or name.startswith("pubsub."):
+            raise ImportError("pubsub missing for test")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _missing_pubsub)
+
+    asyncio.run(adapter.close())
+
+    assert adapter._subscribed is False  # noqa: SLF001
+
+
 def test_serial_send_window_reliability_completes_after_all_received():
     async def _run() -> None:
         port = _unique_port_name("COM")
@@ -132,7 +161,10 @@ def test_serial_send_window_reliability_completes_after_all_received():
             )
 
             packet = {
-                "decoded": {"portnum": "PRIVATE_APP", "payload": build_ack_chunk(message_id, "all_received")},
+                "decoded": {
+                    "portnum": "PRIVATE_APP",
+                    "payload": build_ack_chunk(message_id, "all_received"),
+                },
                 "fromId": "!1234abcd",
                 "from": 123,
             }
@@ -181,7 +213,10 @@ def test_serial_send_window_reliability_resends_missing_chunks():
             assert occurrences >= 2
 
             ack_packet = {
-                "decoded": {"portnum": "PRIVATE_APP", "payload": build_ack_chunk(message_id, "all_received")},
+                "decoded": {
+                    "portnum": "PRIVATE_APP",
+                    "payload": build_ack_chunk(message_id, "all_received"),
+                },
                 "fromId": "!1234abcd",
                 "from": 123,
             }
@@ -217,7 +252,9 @@ def test_serial_send_does_not_chunk_small_payload():
 
 def test_serial_receive_reassembles_chunked_payload_and_sends_completion_ack():
     port = _unique_port_name("COM")
-    adapter = SerialRadioAdapter(port=port, connect=False, segment_size=4, reliability_method="window")
+    adapter = SerialRadioAdapter(
+        port=port, connect=False, segment_size=4, reliability_method="window"
+    )
     fake_interface = _FakeInterface()
     adapter._interface = fake_interface  # noqa: SLF001
 
@@ -310,6 +347,7 @@ def test_serial_channel_usage_summary_includes_chutil_when_available():
 
 def test_send_receive_with_compression():
     """Full round-trip: send() aliases+compresses, _on_receive() decompresses+expands, payload matches."""
+
     async def _run() -> None:
         port = _unique_port_name("COM")
         adapter = SerialRadioAdapter(port=port, connect=False, segment_size=200)

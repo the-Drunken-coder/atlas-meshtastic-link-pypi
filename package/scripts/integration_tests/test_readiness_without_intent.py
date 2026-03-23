@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify readiness completes without waiting for asset intent (uses connected_assets or sync_health)."""
+
 from __future__ import annotations
 
 import argparse

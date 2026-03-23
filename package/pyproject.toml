@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlas-meshtastic-link"
-version = "1.0.9"
+version = "1.0.10"
 description = "Dual-mode Meshtastic link for Atlas Command — gateway and asset in one package."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -88,4 +88,11 @@ atlas_meshtastic_link = [
 [tool.ruff]
 ignore = [
     "E402",
+]
+
+[tool.mypy]
+python_version = "3.11"
+explicit_package_bases = true
+disable_error_code = [
+    "import-untyped",
 ]

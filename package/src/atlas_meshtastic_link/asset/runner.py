@@ -1,4 +1,5 @@
 """Asset runtime event loop."""
+
 from __future__ import annotations
 
 import asyncio
@@ -128,6 +129,7 @@ class AssetRunner:
         if validation_error is not None:
             log.warning("[ASSET] Intent validation failed (%s): %s", asset_id, validation_error)
             return
+        components = _payload_components(payload)
         intent_hash = compute_intent_hash(payload)
         self._intent_seq += 1
         encoded = encode_asset_intent(
@@ -141,7 +143,7 @@ class AssetRunner:
             entity_type=str(payload.get("entity_type") or "asset"),
             subtype=_optional_str(payload.get("subtype")),
             alias=_optional_str(payload.get("alias")),
-            components=payload.get("components") if isinstance(payload.get("components"), dict) else None,
+            components=components,
         )
         await self._radio.send(encoded, destination="^all")
         self._last_publish_at = now
@@ -150,7 +152,9 @@ class AssetRunner:
         self._world.set_meta(last_outbound_intent_epoch=time.time())
         log.info("[ASSET] Published intent snapshot (%s)", asset_id)
 
-    async def _publish_diff(self, *, asset_id: str, payload: dict[str, Any], patch: dict[str, Any], now: float) -> None:
+    async def _publish_diff(
+        self, *, asset_id: str, payload: dict[str, Any], patch: dict[str, Any], now: float
+    ) -> None:
         validation_error = _validate_intent_payload(payload)
         if validation_error is not None:
             log.warning("[ASSET] Intent validation failed (%s): %s", asset_id, validation_error)
@@ -221,8 +225,11 @@ def _optional_str(value: Any) -> str | None:
     return text
 
 
-def _intent_payload(payload: dict[str, Any], fallback_asset_id: str | None) -> tuple[dict[str, Any], str]:
+def _intent_payload(
+    payload: dict[str, Any], fallback_asset_id: str | None
+) -> tuple[dict[str, Any], str]:
     asset_id = str(payload.get("asset_id") or fallback_asset_id or "asset-unknown")
+    components = _payload_components(payload)
     return (
         {
             "entity_type": str(payload.get("entity_type") or "asset"),
@@ -231,10 +238,15 @@ def _intent_payload(payload: dict[str, Any], fallback_asset_id: str | None) -> t
             "alias": _optional_str(payload.get("alias")),
             "subscriptions": payload.get("subscriptions", {}),
             "meta": payload.get("meta"),
-            "components": payload.get("components") if isinstance(payload.get("components"), dict) else None,
+            "components": components,
         },
         asset_id,
     )
+
+
+def _payload_components(payload: dict[str, Any]) -> dict[str, Any] | None:
+    components = payload.get("components")
+    return components if isinstance(components, dict) else None
 
 
 def _validate_intent_payload(payload: dict[str, Any]) -> str | None:

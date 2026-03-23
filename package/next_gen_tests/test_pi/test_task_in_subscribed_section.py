@@ -1,4 +1,5 @@
 """PI test: tasks:self subscription stores tasks in the flat tasks dict."""
+
 from __future__ import annotations
 
 import json
@@ -22,9 +23,7 @@ def test_task_in_world_state(
     """Task appears in the flat tasks dict when using tasks:self."""
     env = pi_ready_entity
 
-    task_id, _ = create_task(
-        pi_api_base, pi_entity_id, task_id_prefix="subscribed"
-    )
+    task_id, _ = create_task(pi_api_base, pi_entity_id, task_id_prefix="subscribed")
     pi_task_cleanup.register(task_id)
 
     wait_for_task_in_world_state(
@@ -34,6 +33,4 @@ def test_task_in_world_state(
     )
 
     data = json.loads(env.world_state_path.read_text(encoding="utf-8"))
-    assert task_in_world_state_dict(data, task_id), (
-        f"Task {task_id} not in top-level tasks dict"
-    )
+    assert task_in_world_state_dict(data, task_id), f"Task {task_id} not in top-level tasks dict"

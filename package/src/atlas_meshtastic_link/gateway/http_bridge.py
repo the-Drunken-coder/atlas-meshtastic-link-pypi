@@ -6,15 +6,34 @@ Install locally via:
 Or fall back to PyPI:
     pip install atlas-asset-client
 """
+
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
-from atlas_asset_client import AtlasCommandHttpClient
+from atlas_asset_client import AtlasCommandHttpClient, EntityComponents
 from httpx import HTTPStatusError
 
 log = logging.getLogger(__name__)
+
+
+def _api_result_to_dict(raw: Any) -> dict[str, Any]:
+    """Normalize pydantic models or plain dicts from atlas-asset-client responses."""
+    if hasattr(raw, "model_dump"):
+        dumped = raw.model_dump()
+        if not isinstance(dumped, dict):
+            raise TypeError(f"Expected model_dump() to return dict, got {type(dumped)!r}")
+        return dict(dumped)
+    if isinstance(raw, dict):
+        return dict(raw)
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    try:
+        return dict(raw)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"Expected dict-like API result, got {type(raw)!r}") from exc
 
 
 class AtlasHttpBridge:
@@ -53,15 +72,17 @@ class AtlasHttpBridge:
             self._client = None
             log.info("[HTTP_BRIDGE] Disconnected")
 
-    async def get_full_dataset(self, **kwargs: Any) -> dict:
+    async def get_full_dataset(self, **kwargs: Any) -> dict[str, Any]:
         """Convenience: fetch the full dataset from Atlas Command."""
-        return await self.client.get_full_dataset(**kwargs)
+        return _api_result_to_dict(await self.client.get_full_dataset(**kwargs))
 
-    async def get_changed_since(self, since: str, **kwargs: Any) -> dict:
+    async def get_changed_since(self, since: str, **kwargs: Any) -> dict[str, Any]:
         """Convenience: fetch changes since a timestamp."""
-        return await self.client.get_changed_since(since, **kwargs)
+        return _api_result_to_dict(await self.client.get_changed_since(since, **kwargs))
 
-    async def publish_asset_intent(self, *, asset_id: str, intent: dict[str, Any]) -> dict[str, Any]:
+    async def publish_asset_intent(
+        self, *, asset_id: str, intent: dict[str, Any]
+    ) -> dict[str, Any]:
         """Ensure the asset exists in Atlas Command and send check-in telemetry.
 
         Returns the checkin response dict (may contain pending tasks for the asset).
@@ -92,7 +113,9 @@ class AtlasHttpBridge:
             "heading_deg": self._float_or_none(telemetry.get("heading_deg")),
         }
 
-        log.debug("[HTTP_BRIDGE] publish_asset_intent asset_id=%s checkin=%r", asset_id, checkin_kwargs)
+        log.debug(
+            "[HTTP_BRIDGE] publish_asset_intent asset_id=%s checkin=%r", asset_id, checkin_kwargs
+        )
 
         try:
             response = await self.client.checkin_entity(asset_id, **checkin_kwargs)
@@ -107,12 +130,13 @@ class AtlasHttpBridge:
                 "components": components,
             }
             log.debug("[HTTP_BRIDGE] Creating new entity: %r", create_payload)
+            comp_model = EntityComponents(**components) if components else None
             await self.client.create_entity(
                 entity_id=asset_id,
                 entity_type=entity_type,
                 alias=alias,
                 subtype=subtype,
-                components=components or None,
+                components=comp_model,
             )
             response = await self.client.checkin_entity(asset_id, **checkin_kwargs)
             log.info("[HTTP_BRIDGE] Published new asset presence to Atlas Command: %s", asset_id)
@@ -130,16 +154,18 @@ class AtlasHttpBridge:
                 track_comps = track.get("components")
                 if not isinstance(track_comps, dict):
                     continue
-                
+
                 track_telemetry = track_comps.get("telemetry")
                 if not isinstance(track_telemetry, dict):
                     track_telemetry = {}
-                    
+
                 track_status_component = track_comps.get("status")
                 track_status_value = None
                 if isinstance(track_status_component, dict):
                     track_status_value = track_status_component.get("value")
-                track_status = self._string_or_none(track_status_value) or self._string_or_none(track_telemetry.get("status"))
+                track_status = self._string_or_none(track_status_value) or self._string_or_none(
+                    track_telemetry.get("status")
+                )
 
                 track_checkin_kwargs: dict[str, Any] = {
                     "status": track_status,
@@ -149,7 +175,7 @@ class AtlasHttpBridge:
                     "speed_m_s": self._float_or_none(track_telemetry.get("speed_m_s")),
                     "heading_deg": self._float_or_none(track_telemetry.get("heading_deg")),
                 }
-                
+
                 try:
                     await self.client.checkin_entity(track_id, **track_checkin_kwargs)
                 except HTTPStatusError as _exc:
@@ -157,15 +183,20 @@ class AtlasHttpBridge:
                         log.warning("[HTTP_BRIDGE] Failed to checkin track %s: %s", track_id, _exc)
                         continue
                     try:
+                        track_comp_model = EntityComponents(**track_comps)
                         await self.client.create_entity(
                             entity_id=track_id,
                             entity_type="track",
                             alias=track_alias,
                             subtype=track_subtype,
-                            components=track_comps,
+                            components=track_comp_model,
                         )
                         await self.client.checkin_entity(track_id, **track_checkin_kwargs)
-                        log.info("[HTTP_BRIDGE] Published new track from asset %s to Atlas Command: %s", asset_id, track_id)
+                        log.info(
+                            "[HTTP_BRIDGE] Published new track from asset %s to Atlas Command: %s",
+                            asset_id,
+                            track_id,
+                        )
                     except Exception as e:
                         log.warning("[HTTP_BRIDGE] Could not create new track %s: %s", track_id, e)
 

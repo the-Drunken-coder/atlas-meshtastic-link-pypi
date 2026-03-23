@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import httpx
 from atlas_meshtastic_link.gateway import http_bridge as bridge_module
@@ -10,7 +11,9 @@ from atlas_meshtastic_link.gateway.http_bridge import AtlasHttpBridge
 class _NotFoundError(httpx.HTTPStatusError):
     def __init__(self) -> None:
         response = httpx.Response(status_code=404)
-        super().__init__("not found", request=httpx.Request("PUT", "http://test"), response=response)
+        super().__init__(
+            "not found", request=httpx.Request("PUT", "http://test"), response=response
+        )
 
 
 class _FakeClient:
@@ -60,7 +63,7 @@ def test_publish_asset_intent_creates_then_checkins(monkeypatch):
                     },
                 },
             )
-            client = bridge.client
+            client = cast(_FakeClient, bridge.client)
             assert len(client.created) == 1
             assert client.created[0]["entity_id"] == "asset-demo-01"
             assert client.created[0]["alias"] == "atlas-demo"
@@ -72,6 +75,7 @@ def test_publish_asset_intent_creates_then_checkins(monkeypatch):
             await bridge.stop()
 
     asyncio.run(_run())
+
 
 def test_publish_asset_intent_with_tracks(monkeypatch):
     async def _run() -> None:
@@ -103,18 +107,18 @@ def test_publish_asset_intent_with_tracks(monkeypatch):
                                     "longitude": -74.01,
                                     "speed_m_s": 1.2,
                                 },
-                            }
+                            },
                         }
-                    ]
+                    ],
                 },
             )
-            client = bridge.client
+            client = cast(_FakeClient, bridge.client)
             assert len(client.created) == 2
-            
+
             created_ids = {c["entity_id"] for c in client.created}
             assert "asset-drone-1" in created_ids
             assert "track-person-1" in created_ids
-            
+
             assert len(client.checkins) == 2
             checkin_ids = {c[0] for c in client.checkins}
             assert "asset-drone-1" in checkin_ids
@@ -131,7 +135,7 @@ def test_publish_asset_intent_with_existing_asset_still_processes_tracks(monkeyp
         bridge = AtlasHttpBridge(base_url="https://atlascommandapi.org")
         await bridge.start()
         try:
-            bridge.client._existing_assets.add("asset-drone-2")
+            cast(_FakeClient, bridge.client)._existing_assets.add("asset-drone-2")
             await bridge.publish_asset_intent(
                 asset_id="asset-drone-2",
                 intent={
@@ -144,7 +148,7 @@ def test_publish_asset_intent_with_existing_asset_still_processes_tracks(monkeyp
                     ],
                 },
             )
-            client = bridge.client
+            client = cast(_FakeClient, bridge.client)
             created_ids = {c["entity_id"] for c in client.created}
             assert created_ids == {"track-person-2"}
             checkin_ids = [c[0] for c in client.checkins]

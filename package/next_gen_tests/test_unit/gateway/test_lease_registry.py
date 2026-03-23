@@ -1,4 +1,5 @@
 """Unit tests for gateway.lease_registry — GatewayLeaseManager."""
+
 from __future__ import annotations
 
 import asyncio

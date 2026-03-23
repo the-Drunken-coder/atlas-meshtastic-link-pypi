@@ -1,4 +1,5 @@
 """SerialRadioAdapter - wraps meshtastic SerialInterface behind RadioInterface."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import IO, Any, cast
 
 from atlas_meshtastic_link.transport.chunking import (
     FLAG_ACK,
@@ -65,17 +66,23 @@ class SerialRadioAdapter:
             0.2, float(kwargs.pop("window_round_trip_timeout_seconds", 1.0))
         )
         self._window_max_round_trips = max(1, int(kwargs.pop("window_max_round_trips", 6)))
-        self._window_max_nack_entries = max(1, min(255, int(kwargs.pop("window_max_nack_entries", 16))))
+        self._window_max_nack_entries = max(
+            1, min(255, int(kwargs.pop("window_max_nack_entries", 16)))
+        )
         self._window_nack_interval_seconds = max(
             0.1, float(kwargs.pop("window_nack_interval_seconds", 0.75))
         )
-        self._outbound_cache_ttl_seconds = max(2.0, float(kwargs.pop("outbound_cache_ttl_seconds", 120.0)))
-        self._completed_cache_ttl_seconds = max(2.0, float(kwargs.pop("completed_cache_ttl_seconds", 120.0)))
+        self._outbound_cache_ttl_seconds = max(
+            2.0, float(kwargs.pop("outbound_cache_ttl_seconds", 120.0))
+        )
+        self._completed_cache_ttl_seconds = max(
+            2.0, float(kwargs.pop("completed_cache_ttl_seconds", 120.0))
+        )
         self._message_dedupe_window_seconds = max(
             0.1, float(kwargs.pop("message_dedupe_window_seconds", 2.0))
         )
         self._kwargs = kwargs
-        self._lock_file = None
+        self._lock_file: IO[bytes] | None = None
         self._interface = None
         self._message_queue: queue.Queue[tuple[str, bytes]] = queue.Queue()
         self._spool = OutboundSpool(kwargs.pop("spool_path", None))
@@ -83,7 +90,7 @@ class SerialRadioAdapter:
         self._transmit_task: asyncio.Task | None = None
         self._subscribed = False
         self._numeric_to_user_id: dict[str, str] = {}
-        self._recent_messages: dict[tuple[str, int], float] = {}
+        self._recent_messages: dict[tuple[str, bytes], float] = {}
         self._message_lock = threading.Lock()
         self._reassembly_lock = threading.Lock()
         self._reassemblers: dict[str, MessageReassembler] = {}
@@ -103,7 +110,9 @@ class SerialRadioAdapter:
                 self._subscribe_receive_events()
                 try:
                     loop = asyncio.get_running_loop()
-                    self._transmit_task = loop.create_task(self._transmit_loop(), name="atlas_serial_transmit")
+                    self._transmit_task = loop.create_task(
+                        self._transmit_loop(), name="atlas_serial_transmit"
+                    )
                 except RuntimeError:
                     # No running event loop at construction time; the transmit loop
                     # will be started lazily on the first call to send().
@@ -127,7 +136,9 @@ class SerialRadioAdapter:
         if self._transmit_task is None or self._transmit_task.done():
             try:
                 loop = asyncio.get_running_loop()
-                self._transmit_task = loop.create_task(self._transmit_loop(), name="atlas_serial_transmit")
+                self._transmit_task = loop.create_task(
+                    self._transmit_loop(), name="atlas_serial_transmit"
+                )
             except RuntimeError:
                 pass
 
@@ -158,8 +169,12 @@ class SerialRadioAdapter:
                 )
 
                 if len(segments) == 1:
-                    log.info("[SERIAL] Sending %d wire bytes to %s", len(wire_payload), destination_id)
-                    await asyncio.to_thread(self._send_frame, segments[0], destination=destination_id)
+                    log.info(
+                        "[SERIAL] Sending %d wire bytes to %s", len(wire_payload), destination_id
+                    )
+                    await asyncio.to_thread(
+                        self._send_frame, segments[0], destination=destination_id
+                    )
                     self._spool.pop(msg_id_db)
                     continue
 
@@ -173,26 +188,47 @@ class SerialRadioAdapter:
 
                 message_id = self._message_id_from_chunk(segments[0])
                 await self._send_data_chunks(segments, destination=destination_id)
-                self._cache_outbound_chunks(destination=destination_id, message_id=message_id, chunks=segments)
+                self._cache_outbound_chunks(
+                    destination=destination_id, message_id=message_id, chunks=segments
+                )
 
                 if destination_id == "^all" or self._reliability_method != "window":
                     self._spool.pop(msg_id_db)
                     continue
 
-                delivered = await self._wait_for_window_ack(destination=destination_id, message_id=message_id)
+                delivered = await self._wait_for_window_ack(
+                    destination=destination_id, message_id=message_id
+                )
                 if delivered:
                     self._spool.pop(msg_id_db)
                 else:
                     self._spool.increment_attempt(msg_id_db)
                     if attempts + 1 >= 3:
-                        log.warning("[SERIAL] Message %s to %s failed after %d attempts, dropping", message_id.hex(), destination_id, attempts + 1)
+                        log.warning(
+                            "[SERIAL] Message %s to %s failed after %d attempts, dropping",
+                            message_id.hex(),
+                            destination_id,
+                            attempts + 1,
+                        )
                         self._spool.pop(msg_id_db)
                     else:
-                        log.warning("[SERIAL] Message %s to %s failed, backing off before retry (attempt %d)", message_id.hex(), destination_id, attempts + 1)
+                        log.warning(
+                            "[SERIAL] Message %s to %s failed, backing off before retry (attempt %d)",
+                            message_id.hex(),
+                            destination_id,
+                            attempts + 1,
+                        )
                         await asyncio.sleep(1.5)
             except asyncio.CancelledError:
                 break
-            except (ConnectionError, OSError, RuntimeError, TimeoutError, TypeError, ValueError) as exc:
+            except (
+                ConnectionError,
+                OSError,
+                RuntimeError,
+                TimeoutError,
+                TypeError,
+                ValueError,
+            ) as exc:
                 log.error("[SERIAL] Error in transmit loop: %s", exc)
                 await asyncio.sleep(1.0)
 
@@ -218,11 +254,28 @@ class SerialRadioAdapter:
         if self._subscribed:
             try:
                 from pubsub import pub
-                from pubsub.core.topicexc import TopicNameError
-
-                pub.unsubscribe(self._on_receive, "meshtastic.receive")
-            except (AttributeError, ImportError, KeyError, RuntimeError, TopicNameError):
+            except ImportError:
                 pass
+            else:
+                try:
+                    from pubsub.core.topicexc import TopicNameError
+                except ImportError:
+                    unsubscribe_errors: tuple[type[BaseException], ...] = (
+                        AttributeError,
+                        KeyError,
+                        RuntimeError,
+                    )
+                else:
+                    unsubscribe_errors = (
+                        AttributeError,
+                        KeyError,
+                        RuntimeError,
+                        TopicNameError,
+                    )
+                try:
+                    pub.unsubscribe(self._on_receive, "meshtastic.receive")
+                except unsubscribe_errors:
+                    pass
             self._subscribed = False
 
         if self._transmit_task is not None:
@@ -232,7 +285,7 @@ class SerialRadioAdapter:
             except asyncio.CancelledError:
                 pass
             self._transmit_task = None
-            
+
         self._spool.close()
 
         if self._interface is not None and hasattr(self._interface, "close"):
@@ -279,7 +332,9 @@ class SerialRadioAdapter:
 
         parsed = _parse_channel_entries(channels_obj)
         if not parsed:
-            base = f"port={self._port} primary={primary_url}" if primary_url else f"port={self._port}"
+            base = (
+                f"port={self._port} primary={primary_url}" if primary_url else f"port={self._port}"
+            )
             base += " channels=unknown"
             chutil = _get_channel_utilization(self._interface)
             if chutil is not None:
@@ -287,12 +342,14 @@ class SerialRadioAdapter:
             return base
 
         active = [entry for entry in parsed if entry["role"].lower() != "disabled"]
-        slots = ", ".join(
-            f"#{entry['index']}:{entry['name']}({entry['role']})"
-            for entry in active
-        ) or "none"
+        slots = (
+            ", ".join(f"#{entry['index']}:{entry['name']}({entry['role']})" for entry in active)
+            or "none"
+        )
         primary = primary_url or "none"
-        summary = f"port={self._port} primary={primary} active_channels={len(active)} slots=[{slots}]"
+        summary = (
+            f"port={self._port} primary={primary} active_channels={len(active)} slots=[{slots}]"
+        )
         chutil = _get_channel_utilization(self._interface)
         if chutil is not None:
             summary += f" chutil={chutil:.1f}%"
@@ -434,7 +491,9 @@ class SerialRadioAdapter:
             )
             await asyncio.to_thread(self._send_frame, chunk, destination=destination)
 
-    def _cache_outbound_chunks(self, *, destination: str, message_id: bytes, chunks: list[bytes]) -> None:
+    def _cache_outbound_chunks(
+        self, *, destination: str, message_id: bytes, chunks: list[bytes]
+    ) -> None:
         with self._outbound_lock:
             chunk_map: dict[int, bytes] = {}
             for chunk in chunks:
@@ -559,7 +618,9 @@ class SerialRadioAdapter:
             self._prune_idle_reassemblers_locked()
 
         with self._outbound_lock:
-            self._completed_messages[(sender, message_id)] = time.monotonic() + self._completed_cache_ttl_seconds
+            self._completed_messages[(sender, message_id)] = (
+                time.monotonic() + self._completed_cache_ttl_seconds
+            )
             self._prune_outbound_locked()
 
         if self._reliability_method == "window" and total > 1:
@@ -635,7 +696,11 @@ class SerialRadioAdapter:
     def _handle_bitmap_request(self, sender: str, message_id: bytes) -> None:
         with self._reassembly_lock:
             reassembler = self._reassemblers.get(sender)
-            missing = None if reassembler is None else reassembler.missing_sequences(message_id, force=True)
+            missing = (
+                None
+                if reassembler is None
+                else reassembler.missing_sequences(message_id, force=True)
+            )
 
         if missing is None:
             with self._outbound_lock:
@@ -691,7 +756,10 @@ class SerialRadioAdapter:
                 self._nack_state[state_key] = (missing_set, now)
                 return True
             previous_missing, previous_timestamp = previous
-            if previous_missing != missing_set or (now - previous_timestamp) >= self._window_nack_interval_seconds:
+            if (
+                previous_missing != missing_set
+                or (now - previous_timestamp) >= self._window_nack_interval_seconds
+            ):
                 self._nack_state[state_key] = (missing_set, now)
                 return True
             return False
@@ -790,18 +858,22 @@ class SerialRadioAdapter:
                     lock_file.write(b"0")
                     lock_file.flush()
                 lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                msvcrt.locking(  # type: ignore[attr-defined]
+                    lock_file.fileno(), msvcrt.LK_NBLCK, 1  # type: ignore[attr-defined]
+                )
             else:
                 import fcntl
 
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
         except OSError as exc:
             lock_file.close()
-            raise RuntimeError(f"Serial port {self._port} is already in use by another process.") from exc
+            raise RuntimeError(
+                f"Serial port {self._port} is already in use by another process."
+            ) from exc
         except ImportError:
             lock_file.close()
             raise
-        self._lock_file = lock_file
+        self._lock_file = cast(IO[bytes], lock_file)
 
     def _release_port_lock(self) -> None:
         if self._lock_file is None:
@@ -812,11 +884,13 @@ class SerialRadioAdapter:
                 import msvcrt
 
                 self._lock_file.seek(0)
-                msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                msvcrt.locking(  # type: ignore[attr-defined]
+                    self._lock_file.fileno(), msvcrt.LK_UNLCK, 1  # type: ignore[attr-defined]
+                )
             else:
                 import fcntl
 
-                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
         finally:
             self._lock_file.close()
             self._lock_file = None

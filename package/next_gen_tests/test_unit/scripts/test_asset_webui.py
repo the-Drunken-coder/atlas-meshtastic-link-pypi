@@ -1,15 +1,16 @@
-﻿"""Unit tests for scripts.asset_webui."""
+"""Unit tests for scripts.asset_webui."""
+
 from __future__ import annotations
 
 import time
 
 import pytest
 
-TestClient = pytest.importorskip(
+pytest.importorskip(
     "fastapi.testclient",
     reason="fastapi is optional; webui script tests require it",
-).TestClient
-
+)
+from fastapi.testclient import TestClient
 from scripts import _webui_common, asset_webui
 
 
@@ -78,7 +79,9 @@ def test_asset_intent_file_get_put(tmp_path):
 
     write_response = client.put(
         "/files/asset-intent",
-        json={"raw": '{"asset_id":"asset-01","subscriptions":{"entities":["e-1"]},"components":{},"meta":{}}'},
+        json={
+            "raw": '{"asset_id":"asset-01","subscriptions":{"entities":["e-1"]},"components":{},"meta":{}}'
+        },
     )
     assert write_response.status_code == 200
     assert write_response.json()["ok"] is True

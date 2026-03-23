@@ -1,4 +1,5 @@
 """Unit tests for scripts._webui_common."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,9 @@ from atlas_meshtastic_link.config.schema import LinkConfig, RadioConfig
 from scripts import _webui_common
 
 
-def _wait_for_state(controller: _webui_common.LinkProcessController, target_state: str, timeout: float = 2.0) -> None:
+def _wait_for_state(
+    controller: _webui_common.LinkProcessController, target_state: str, timeout: float = 2.0
+) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         current = controller.status_snapshot()["state"]

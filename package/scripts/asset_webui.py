@@ -1,4 +1,5 @@
 """Small local web UI for asset-mode smoke testing."""
+
 from __future__ import annotations
 
 import argparse
@@ -27,7 +28,7 @@ try:
         validate_same_origin,
     )
 except ModuleNotFoundError:  # pragma: no cover - direct script execution path
-    from _webui_common import (  # type: ignore[no-redef]
+    from _webui_common import (  # type: ignore[import-not-found, no-redef]
         LOG_FORMAT,
         InMemoryLogBufferHandler,
         LinkProcessController,
@@ -478,7 +479,13 @@ def _current_asset_paths(app: FastAPI) -> tuple[Path, Path]:
 
 def _read_json_file(path: Path) -> tuple[bool, dict[str, Any]]:
     if not path.exists():
-        return False, {"ok": False, "path": str(path), "message": "File not found.", "raw": None, "content": None}
+        return False, {
+            "ok": False,
+            "path": str(path),
+            "message": "File not found.",
+            "raw": None,
+            "content": None,
+        }
     raw = path.read_text(encoding="utf-8")
     try:
         parsed = json.loads(raw)
@@ -515,7 +522,11 @@ def create_asset_app(*, auto_start: bool = True, config_path: str | Path | None 
     handler.setFormatter(logging.Formatter(LOG_FORMAT))
     install_log_capture(handler, ["atlas_meshtastic_link", LOGGER_NAME])
     controller = LinkProcessController(mode="asset", logger=log)
-    config_file = Path(config_path) if config_path is not None else default_config_path(__file__, "asset_webui.json")
+    config_file = (
+        Path(config_path)
+        if config_path is not None
+        else default_config_path(__file__, "asset_webui.json")
+    )
     try:
         startup_config = load_mode_config(config_file, "asset")
         log.info("[WEBUI] loaded asset config from %s", config_file)
@@ -615,13 +626,18 @@ def create_asset_app(*, auto_start: bool = True, config_path: str | Path | None 
         body = await request.json()
         raw = body.get("raw") if isinstance(body, dict) else None
         if not isinstance(raw, str):
-            return JSONResponse({"ok": False, "message": "Request body must include string field 'raw'."}, status_code=400)
+            return JSONResponse(
+                {"ok": False, "message": "Request body must include string field 'raw'."},
+                status_code=400,
+            )
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
             return JSONResponse({"ok": False, "message": f"Invalid JSON: {exc}"}, status_code=400)
         if not isinstance(parsed, dict):
-            return JSONResponse({"ok": False, "message": "JSON root must be an object."}, status_code=400)
+            return JSONResponse(
+                {"ok": False, "message": "JSON root must be an object."}, status_code=400
+            )
 
         intent_path, _world_state_path = _current_asset_paths(app)
         _write_json_file(intent_path, parsed)
@@ -657,7 +673,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    import uvicorn
+    import uvicorn  # type: ignore[import-not-found]
 
     uvicorn.run(
         create_asset_app(config_path=args.config),

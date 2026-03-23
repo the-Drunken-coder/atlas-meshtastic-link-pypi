@@ -1,4 +1,5 @@
 """PI test: verify telemetry propagates from asset intent to Atlas API via gateway checkin."""
+
 from __future__ import annotations
 
 import time
@@ -27,6 +28,6 @@ def test_telemetry_checkin(
             if isinstance(telemetry, dict):
                 break
         time.sleep(2.0)
-    assert isinstance(telemetry, dict), (
-        f"Entity has no components.telemetry after {telemetry_timeout}s"
-    )
+    assert isinstance(
+        telemetry, dict
+    ), f"Entity has no components.telemetry after {telemetry_timeout}s"

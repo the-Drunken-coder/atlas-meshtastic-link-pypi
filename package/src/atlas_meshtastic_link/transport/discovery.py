@@ -1,4 +1,5 @@
 """USB auto-discovery for Meshtastic radios via pyserial VID/PID matching."""
+
 from __future__ import annotations
 
 import logging
@@ -37,7 +38,9 @@ def discover_usb_ports() -> list[PortInfo]:
         for vid, pid, chip_name in KNOWN_VID_PIDS:
             if port.vid == vid and port.pid == pid:
                 results.append(PortInfo(port.device, port.description, chip_name))
-                log.info("[DISCOVERY] Found %s on %s (%s)", chip_name, port.device, port.description)
+                log.info(
+                    "[DISCOVERY] Found %s on %s (%s)", chip_name, port.device, port.description
+                )
                 break
     return results
 

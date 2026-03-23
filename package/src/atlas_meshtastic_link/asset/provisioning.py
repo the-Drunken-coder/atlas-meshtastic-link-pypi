@@ -1,4 +1,5 @@
 """ProvisioningHandshake - gateway discovery state machine."""
+
 from __future__ import annotations
 
 import asyncio
@@ -140,7 +141,10 @@ class ProvisioningHandshake:
                 )
 
             remaining = deadline - now
-            poll_timeout = min(remaining, request_retry_seconds if not awaiting_credentials else response_retry_seconds)
+            poll_timeout = min(
+                remaining,
+                request_retry_seconds if not awaiting_credentials else response_retry_seconds,
+            )
             envelope = await self._receive_discovery_message(poll_timeout)
             if envelope is None:
                 continue
@@ -156,7 +160,11 @@ class ProvisioningHandshake:
                     log.warning("[PROVISION] Challenge mismatch from %s", gateway_sender)
                     return False
                 incoming_session = optional_session_id(message.get("session_id"))
-                if challenge_session_id and incoming_session and incoming_session != challenge_session_id:
+                if (
+                    challenge_session_id
+                    and incoming_session
+                    and incoming_session != challenge_session_id
+                ):
                     log.debug(
                         "[PROVISION] Ignoring stale challenge from %s with mismatched session %s (expected %s)",
                         gateway_sender,
@@ -190,7 +198,12 @@ class ProvisioningHandshake:
 
             if op == PROVISION_CREDENTIALS:
                 incoming_session = optional_session_id(message.get("session_id"))
-                if awaiting_credentials and challenge_session_id and incoming_session and incoming_session != challenge_session_id:
+                if (
+                    awaiting_credentials
+                    and challenge_session_id
+                    and incoming_session
+                    and incoming_session != challenge_session_id
+                ):
                     log.debug(
                         "[PROVISION] Ignoring channel config from %s with mismatched session %s (expected %s)",
                         gateway_sender,
@@ -223,7 +236,9 @@ class ProvisioningHandshake:
 
         return False
 
-    async def _receive_discovery_message(self, timeout_seconds: float) -> tuple[dict[str, Any], str] | None:
+    async def _receive_discovery_message(
+        self, timeout_seconds: float
+    ) -> tuple[dict[str, Any], str] | None:
         deadline = time.monotonic() + max(0.0, timeout_seconds)
         while not self._stop_event.is_set():
             remaining = deadline - time.monotonic()

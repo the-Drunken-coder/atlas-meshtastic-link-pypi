@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Measure Atlas command round-trip latency from API task create to local world_state."""
+
 from __future__ import annotations
 
 import argparse
@@ -62,9 +63,7 @@ def main() -> int:
             entity_id=args.entity_id if not args.no_require_intent else None,
             require_intent=not args.no_require_intent,
         )
-        world_state_path = resolve_world_state_path(
-            status_snapshots.get("asset", {}), package_root
-        )
+        world_state_path = resolve_world_state_path(status_snapshots.get("asset", {}), package_root)
 
         ensure_entity(
             args.api_base_url,

@@ -1,4 +1,5 @@
 """PI test: task acknowledge roundtrip via API."""
+
 from __future__ import annotations
 
 import pytest
@@ -21,9 +22,7 @@ def test_task_status_roundtrip(
     """Create task, receive on asset, acknowledge via API, verify status."""
     env = pi_ready_entity
 
-    task_id, _ = create_task(
-        pi_api_base, pi_entity_id, task_id_prefix="status"
-    )
+    task_id, _ = create_task(pi_api_base, pi_entity_id, task_id_prefix="status")
     pi_task_cleanup.register(task_id)
 
     wait_for_task_in_world_state(
@@ -37,4 +36,6 @@ def test_task_status_roundtrip(
     payload = get_task(pi_api_base, task_id)
     assert payload.get("status") == "acknowledged"
     assert payload.get("task_id") == task_id, f"task_id mismatch: {payload.get('task_id')}"
-    assert payload.get("entity_id") == pi_entity_id, f"entity_id mismatch: {payload.get('entity_id')}"
+    assert (
+        payload.get("entity_id") == pi_entity_id
+    ), f"entity_id mismatch: {payload.get('entity_id')}"

@@ -1,4 +1,5 @@
 """PI test: create multiple tasks and verify all appear in world_state."""
+
 from __future__ import annotations
 
 import pytest
@@ -22,9 +23,7 @@ def test_multiple_tasks(
 
     task_ids: list[str] = []
     for i in range(task_count):
-        task_id, _ = create_task(
-            pi_api_base, pi_entity_id, task_id_prefix="multi"
-        )
+        task_id, _ = create_task(pi_api_base, pi_entity_id, task_id_prefix="multi")
         task_ids.append(task_id)
         pi_task_cleanup.register(task_id)
 

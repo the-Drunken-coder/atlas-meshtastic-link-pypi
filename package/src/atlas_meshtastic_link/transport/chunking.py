@@ -1,4 +1,5 @@
 """Binary chunking protocol - compact 16-byte header and helpers."""
+
 from __future__ import annotations
 
 import math

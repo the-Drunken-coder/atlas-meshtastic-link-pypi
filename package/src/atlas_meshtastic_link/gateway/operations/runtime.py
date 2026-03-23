@@ -1,4 +1,5 @@
 """Gateway business runtime for billboard operations."""
+
 from __future__ import annotations
 
 import asyncio
@@ -38,7 +39,7 @@ STATE_DEGRADED = "DEGRADED"
 @dataclass
 class _SyncHealth:
     state: str = STATE_IN_SYNC
-    last_seq: int = 0
+    last_seq: int = -1  # -1 means no sequence received yet
     last_hash: str = ""
     last_apply_epoch: float = 0.0
     last_generated_at_ms: int = 0
@@ -82,7 +83,9 @@ class GatewayOperationsRuntime:
         self._registry.register(ASSET_INTENT_DIFF, self._handle_asset_intent_diff)
         self._sync_health_by_asset: dict[str, _SyncHealth] = {}
         self._sync_stale_after_seconds = max(0.01, float(config.sync_stale_after_seconds))
-        self._sync_summary_interval_seconds = max(5.0, float(config.sync_health_summary_interval_seconds))
+        self._sync_summary_interval_seconds = max(
+            5.0, float(config.sync_health_summary_interval_seconds)
+        )
         self._last_sync_summary_at = 0.0
 
     async def run(self) -> None:
@@ -168,13 +171,25 @@ class GatewayOperationsRuntime:
         base_payload = self._asset_full_payloads.get(sender)
         if base_payload is None:
             log.debug("[GATEWAY] Ignoring intent diff for %s: missing base payload", asset_id)
-            self._emit_status(intent_diff_event={"asset_id": asset_id, "status": "ignored", "reason": "missing_base"})
+            self._emit_status(
+                intent_diff_event={
+                    "asset_id": asset_id,
+                    "status": "ignored",
+                    "reason": "missing_base",
+                }
+            )
             self._mark_degraded(asset_id=asset_id, reason="missing_base")
             return
         patch = message.get("patch")
         if not isinstance(patch, dict):
             log.debug("[GATEWAY] Ignoring intent diff for %s: invalid patch type", asset_id)
-            self._emit_status(intent_diff_event={"asset_id": asset_id, "status": "ignored", "reason": "invalid_patch"})
+            self._emit_status(
+                intent_diff_event={
+                    "asset_id": asset_id,
+                    "status": "ignored",
+                    "reason": "invalid_patch",
+                }
+            )
             self._mark_degraded(asset_id=asset_id, reason="invalid_patch")
             return
         if not health.last_hash:
@@ -191,7 +206,7 @@ class GatewayOperationsRuntime:
                     f"asset={asset_id} seq={intent_seq} expected_base_hash={health.last_hash} got_base_hash={base_hash}",
                 )
             return
-        if health.last_seq and intent_seq != health.last_seq + 1:
+        if health.last_seq >= 0 and intent_seq != health.last_seq + 1:
             self._mark_degraded(
                 asset_id=asset_id,
                 reason=f"seq_gap expected={health.last_seq + 1} got={intent_seq}",
@@ -240,16 +255,17 @@ class GatewayOperationsRuntime:
     async def _poll_and_publish(self) -> None:
         self._leases.expire()
         try:
-            changes = await self._bridge.get_changed_since(
-                since=self._last_since,
-                limit_per_type=self._config.changed_since_limit_per_type,
-            )
+            changes = await self._drain_changed_since_pages()
         except (ConnectionError, HTTPError, OSError, RuntimeError, TimeoutError, ValueError):
             log.exception("[GATEWAY] get_changed_since failed")
             return
 
         server_ts = changes.get("timestamp")
-        new_since = server_ts if isinstance(server_ts, str) and server_ts else datetime.now(timezone.utc).isoformat()
+        new_since = (
+            server_ts
+            if isinstance(server_ts, str) and server_ts
+            else datetime.now(timezone.utc).isoformat()
+        )
 
         await self._update_entity_index(changes)
         if not self._asset_subscriptions:
@@ -273,7 +289,9 @@ class GatewayOperationsRuntime:
             if key in subscribed_union:
                 outbound.append(record)
             elif record.get("kind") == "tasks" and tasks_self_assets:
-                task_entity_id = (record.get("data") or {}).get("entity_id")
+                task_entity_id = record.get("entity_id") or (record.get("data") or {}).get(
+                    "entity_id"
+                )
                 task_entity_id_str = str(task_entity_id) if task_entity_id is not None else None
                 if task_entity_id_str and task_entity_id_str in tasks_self_assets:
                     outbound.append(record)
@@ -306,10 +324,128 @@ class GatewayOperationsRuntime:
         else:
             self._last_since = new_since
 
+    async def _drain_changed_since_pages(self) -> dict[str, Any]:
+        since = self._last_since
+        limit_per_type = self._config.changed_since_limit_per_type
+        merged: dict[str, Any] = {
+            "entities": [],
+            "tasks": [],
+            "objects": [],
+            "deleted_entities": [],
+            "deleted_tasks": [],
+            "deleted_objects": [],
+        }
+        cursors: dict[str, str] = {}
+        response_timestamp: str | None = None
+        seen_cursor_states: set[tuple[tuple[str, str], ...]] = set()
+        max_pages = 1000
+        page_count = 0
+
+        while True:
+            page_count += 1
+            if page_count > max_pages:
+                raise RuntimeError("changed-since pagination exceeded maximum page count")
+            page = await self._bridge.get_changed_since(
+                since=since,
+                limit_per_type=limit_per_type,
+                **cursors,
+            )
+            self._merge_changed_since_page(merged, page)
+            page_timestamp = page.get("timestamp")
+            if isinstance(page_timestamp, str) and page_timestamp:
+                response_timestamp = page_timestamp
+
+            next_cursors: dict[str, str] = {}
+            for has_more_key, next_cursor_key, request_key in (
+                ("has_more_entities", "next_entity_cursor", "entity_cursor"),
+                ("has_more_tasks", "next_task_cursor", "task_cursor"),
+                ("has_more_objects", "next_object_cursor", "object_cursor"),
+                (
+                    "has_more_deleted_entities",
+                    "next_deleted_entity_cursor",
+                    "deleted_entity_cursor",
+                ),
+                ("has_more_deleted_tasks", "next_deleted_task_cursor", "deleted_task_cursor"),
+                (
+                    "has_more_deleted_objects",
+                    "next_deleted_object_cursor",
+                    "deleted_object_cursor",
+                ),
+            ):
+                if not page.get(has_more_key):
+                    continue
+                cursor_value = page.get(next_cursor_key)
+                if isinstance(cursor_value, str) and cursor_value:
+                    next_cursors[request_key] = cursor_value
+
+            if not next_cursors:
+                if response_timestamp is not None:
+                    merged["timestamp"] = response_timestamp
+                return merged
+            cursor_state = tuple(sorted(next_cursors.items()))
+            if cursor_state in seen_cursor_states:
+                raise RuntimeError("changed-since pagination stopped making progress")
+            seen_cursor_states.add(cursor_state)
+            cursors = next_cursors
+
+    async def _drain_full_dataset_pages(self) -> dict[str, Any]:
+        merged: dict[str, Any] = {
+            "entities": [],
+            "tasks": [],
+            "objects": [],
+        }
+        cursors: dict[str, str] = {}
+        seen_cursor_states: set[tuple[tuple[str, str], ...]] = set()
+        max_pages = 1000
+        page_count = 0
+
+        while True:
+            page_count += 1
+            if page_count > max_pages:
+                raise RuntimeError("full-dataset pagination exceeded maximum page count")
+            page = await self._bridge.get_full_dataset(**cursors)
+            for key in ("entities", "tasks", "objects"):
+                rows = page.get(key)
+                if isinstance(rows, list):
+                    merged[key].extend(rows)
+
+            next_cursors: dict[str, str] = {}
+            for has_more_key, next_cursor_key, request_key in (
+                ("has_more_entities", "next_entity_cursor", "entity_cursor"),
+                ("has_more_tasks", "next_task_cursor", "task_cursor"),
+                ("has_more_objects", "next_object_cursor", "object_cursor"),
+            ):
+                if not page.get(has_more_key):
+                    continue
+                cursor_value = page.get(next_cursor_key)
+                if isinstance(cursor_value, str) and cursor_value:
+                    next_cursors[request_key] = cursor_value
+
+            if not next_cursors:
+                return merged
+            cursor_state = tuple(sorted(next_cursors.items()))
+            if cursor_state in seen_cursor_states:
+                raise RuntimeError("full-dataset pagination stopped making progress")
+            seen_cursor_states.add(cursor_state)
+            cursors = next_cursors
+
+    def _merge_changed_since_page(self, merged: dict[str, Any], page: dict[str, Any]) -> None:
+        for key in (
+            "entities",
+            "tasks",
+            "objects",
+            "deleted_entities",
+            "deleted_tasks",
+            "deleted_objects",
+        ):
+            rows = page.get(key)
+            if isinstance(rows, list):
+                merged.setdefault(key, []).extend(rows)
+
     async def _seed_entity_index(self) -> None:
         """Fetch the full dataset once at startup to seed the entity index."""
         try:
-            dataset = await self._bridge.get_full_dataset()
+            dataset = await self._drain_full_dataset_pages()
         except (ConnectionError, HTTPError, OSError, RuntimeError, TimeoutError, ValueError):
             log.exception("[GATEWAY] Failed to seed entity index from full dataset")
             return
@@ -324,12 +460,10 @@ class GatewayOperationsRuntime:
             self._index_dirty = True
             log.info("[GATEWAY] Seeded entity index with %d entities", len(self._known_entity_ids))
 
-    async def _push_current_subscribed_records(
-        self, *, asset_id: str, keys: set[str]
-    ) -> None:
+    async def _push_current_subscribed_records(self, *, asset_id: str, keys: set[str]) -> None:
         """Fetch the full dataset and push records matching subscription keys."""
         try:
-            dataset = await self._bridge.get_full_dataset()
+            dataset = await self._drain_full_dataset_pages()
         except (ConnectionError, HTTPError, OSError, RuntimeError, TimeoutError, ValueError):
             log.exception("[GATEWAY] Failed to fetch full dataset for subscription push")
             return
@@ -341,7 +475,7 @@ class GatewayOperationsRuntime:
             if key in keys:
                 return True
             if r.get("kind") == "tasks" and TASKS_SELF_KEY in keys:
-                task_entity_id = (r.get("data") or {}).get("entity_id")
+                task_entity_id = r.get("entity_id") or (r.get("data") or {}).get("entity_id")
                 return task_entity_id is not None and str(task_entity_id) == asset_id
             return False
 
@@ -366,7 +500,7 @@ class GatewayOperationsRuntime:
 
         for deleted in changes.get("deleted_entities", []) or []:
             if isinstance(deleted, dict):
-                entity_id = deleted.get("entity_id")
+                entity_id = deleted.get("id") or deleted.get("entity_id")
                 if entity_id:
                     self._known_entity_ids.discard(str(entity_id))
 
@@ -392,7 +526,9 @@ class GatewayOperationsRuntime:
             self._last_index_diff_broadcast = now
             self._index_dirty = False
             if self._interaction_log is not None:
-                self._interaction_log.record("ENTITY_INDEX_BROADCAST", f"count={len(self._known_entity_ids)}")
+                self._interaction_log.record(
+                    "ENTITY_INDEX_BROADCAST", f"count={len(self._known_entity_ids)}"
+                )
             log.info("[GATEWAY] Broadcast entity index (%d entities)", len(self._known_entity_ids))
 
     def _consume_tokens(self, count: int) -> bool:
@@ -427,12 +563,18 @@ class GatewayOperationsRuntime:
                 )
         except (ConnectionError, HTTPError, OSError, RuntimeError, TimeoutError, ValueError):
             self._mark_degraded(asset_id=asset_id, reason="publish_asset_presence_failed")
-            log.exception("[GATEWAY] Failed to publish asset intent to Atlas Command (asset_id=%s)", asset_id)
+            log.exception(
+                "[GATEWAY] Failed to publish asset intent to Atlas Command (asset_id=%s)", asset_id
+            )
             return
 
-        await self._forward_checkin_tasks(asset_id=asset_id, checkin_response=checkin_response or {})
+        await self._forward_checkin_tasks(
+            asset_id=asset_id, checkin_response=checkin_response or {}
+        )
 
-    async def _forward_checkin_tasks(self, *, asset_id: str, checkin_response: dict[str, Any]) -> None:
+    async def _forward_checkin_tasks(
+        self, *, asset_id: str, checkin_response: dict[str, Any]
+    ) -> None:
         """If checkin returns pending tasks, broadcast them to mesh for asset-side filtering."""
         tasks = checkin_response.get("tasks")
         if not isinstance(tasks, list) or not tasks:
@@ -445,12 +587,14 @@ class GatewayOperationsRuntime:
             task_id = task.get("task_id")
             if not task_id:
                 continue
-            records.append({
-                "kind": "tasks",
-                "id": str(task_id),
-                "data": task,
-                "version": _extract_version(task),
-            })
+            records.append(
+                {
+                    "kind": "tasks",
+                    "id": str(task_id),
+                    "data": task,
+                    "version": _extract_version(task),
+                }
+            )
 
         if not records:
             return
@@ -555,7 +699,9 @@ class GatewayOperationsRuntime:
                 )
         if self._interaction_log is not None:
             event_type = "SYNC_INTENT_APPLIED" if reason == "full_snapshot" else "SYNC_DIFF_APPLIED"
-            self._interaction_log.record(event_type, f"asset={asset_id} seq={seq} hash={intent_hash}")
+            self._interaction_log.record(
+                event_type, f"asset={asset_id} seq={seq} hash={intent_hash}"
+            )
 
     def _mark_degraded(self, *, asset_id: str, reason: str) -> None:
         now = time.time()
@@ -617,13 +763,23 @@ class GatewayOperationsRuntime:
             return
         self._last_sync_summary_at = now
         total = len(self._sync_health_by_asset)
-        degraded = sum(1 for health in self._sync_health_by_asset.values() if health.state == STATE_DEGRADED)
+        degraded = sum(
+            1 for health in self._sync_health_by_asset.values() if health.state == STATE_DEGRADED
+        )
         max_age_ms = 0
         for health in self._sync_health_by_asset.values():
             if health.discrepancy_since_epoch is None:
                 continue
-            max_age_ms = max(max_age_ms, int(max(0.0, now - health.discrepancy_since_epoch) * 1000.0))
-        log.info("[SYNC] Summary assets=%d in_sync=%d degraded=%d max_discrepancy_age_ms=%d", total, total - degraded, degraded, max_age_ms)
+            max_age_ms = max(
+                max_age_ms, int(max(0.0, now - health.discrepancy_since_epoch) * 1000.0)
+            )
+        log.info(
+            "[SYNC] Summary assets=%d in_sync=%d degraded=%d max_discrepancy_age_ms=%d",
+            total,
+            total - degraded,
+            degraded,
+            max_age_ms,
+        )
         ephemeral_log.info(
             "[SYNC_EPHEMERAL] event=summary assets=%d in_sync=%d degraded=%d max_discrepancy_age_ms=%d",
             total,
@@ -704,7 +860,70 @@ def _records_from_changes(changes: dict[str, Any]) -> list[dict[str, Any]]:
                     "version": _extract_version(obj),
                 }
             )
+    for deleted in changes.get("deleted_entities", []) or []:
+        entity_id = None
+        deleted_at = None
+        if isinstance(deleted, dict):
+            entity_id = deleted.get("id") or deleted.get("entity_id")
+            deleted_at = deleted.get("deleted_at")
+        elif deleted is not None:
+            entity_id = deleted
+        if entity_id:
+            records.append(
+                {
+                    "kind": "entities",
+                    "id": str(entity_id),
+                    "data": None,
+                    "deleted": True,
+                    "version": deleted_at,
+                }
+            )
+    for deleted in changes.get("deleted_tasks", []) or []:
+        task_id = None
+        deleted_at = None
+        task_entity_id = None
+        deleted_data = None
+        if isinstance(deleted, dict):
+            task_id = deleted.get("id") or deleted.get("task_id")
+            deleted_at = deleted.get("deleted_at")
+            deleted_data = deleted.get("data")
+            if isinstance(deleted_data, dict):
+                task_entity_id = deleted_data.get("entity_id")
+            if task_entity_id is None:
+                task_entity_id = deleted.get("entity_id")
+        elif deleted is not None:
+            task_id = deleted
+        if task_id:
+            records.append(
+                {
+                    "kind": "tasks",
+                    "id": str(task_id),
+                    "data": None,
+                    "entity_id": task_entity_id,
+                    "deleted": True,
+                    "version": deleted_at,
+                }
+            )
+    for deleted in changes.get("deleted_objects", []) or []:
+        object_id = None
+        deleted_at = None
+        if isinstance(deleted, dict):
+            object_id = deleted.get("id") or deleted.get("object_id")
+            deleted_at = deleted.get("deleted_at")
+        elif deleted is not None:
+            object_id = deleted
+        if object_id:
+            records.append(
+                {
+                    "kind": "objects",
+                    "id": str(object_id),
+                    "data": None,
+                    "deleted": True,
+                    "version": deleted_at,
+                }
+            )
     return records
+
 
 def _canonicalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     # Stable key ordering makes UI comparisons easier without changing semantics.

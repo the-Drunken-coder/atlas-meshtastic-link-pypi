@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify telemetry propagates from asset intent to Atlas API via gateway checkin."""
+
 from __future__ import annotations
 
 import argparse

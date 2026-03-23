@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Create task while asset offline; start asset; verify task is delivered on reconnect."""
+
 from __future__ import annotations
 
 import argparse

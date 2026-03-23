@@ -30,6 +30,7 @@ def test_encode_decode_asset_intent():
     assert parsed["msg_type"] == ASSET_INTENT
     assert parsed["asset_id"] == "asset-1"
 
+
 def test_encode_asset_intent_with_tracks():
     raw = encode_asset_intent(
         asset_id="asset-1",
@@ -39,7 +40,7 @@ def test_encode_asset_intent_with_tracks():
         generated_at_ms=2,
         expected_max_silence_ms=10000,
         components={"telemetry": {"latitude": 2.0}},
-        tracks=[{"entity_id": "track-1", "subtype": "person", "components": {}}]
+        tracks=[{"entity_id": "track-1", "subtype": "person", "components": {}}],
     )
     parsed = decode_billboard_message(raw)
     assert parsed is not None

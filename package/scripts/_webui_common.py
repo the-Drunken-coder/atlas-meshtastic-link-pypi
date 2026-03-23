@@ -1,4 +1,5 @@
 """Shared helpers for local gateway/asset web UI scripts."""
+
 from __future__ import annotations
 
 import asyncio
@@ -150,7 +151,11 @@ class LinkProcessController:
                 "world_state_path": self._world_state_path,
                 "gateway_asset_intents": dict(self._gateway_asset_intents),
                 "sync_health_by_asset": dict(self._sync_health_by_asset),
-                "sync_health_event": dict(self._sync_health_event) if isinstance(self._sync_health_event, dict) else None,
+                "sync_health_event": (
+                    dict(self._sync_health_event)
+                    if isinstance(self._sync_health_event, dict)
+                    else None
+                ),
             }
 
     def effective_config(self) -> dict[str, Any] | None:
@@ -301,14 +306,18 @@ def build_asset_config(form: Mapping[str, Any]) -> LinkConfig:
     )
 
 
-def _build_common_config_sections(form: Mapping[str, Any]) -> tuple[RadioConfig, TransportConfig, str, str]:
+def _build_common_config_sections(
+    form: Mapping[str, Any],
+) -> tuple[RadioConfig, TransportConfig, str, str]:
     radio_mode = str(form.get("radio_mode", "serial")).strip().lower()
     if radio_mode != "serial":
         raise ValueError("Only serial radio mode is supported.")
     radio_port = _optional_text(form.get("radio_port"))
     auto_discover = _checkbox(form, "auto_discover")
     if not auto_discover and not radio_port:
-        raise ValueError("Provide a serial port or enable auto-discover when using real serial mode.")
+        raise ValueError(
+            "Provide a serial port or enable auto-discover when using real serial mode."
+        )
 
     mode_profile = _optional_text(form.get("mode_profile")) or "general"
     try:

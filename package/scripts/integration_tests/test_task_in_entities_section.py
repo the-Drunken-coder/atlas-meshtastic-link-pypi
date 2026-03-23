@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify tasks:self subscription stores tasks in tasks mapping instead of the old passive section partitioning."""
+
 from __future__ import annotations
 
 import argparse
@@ -58,9 +59,7 @@ def main() -> int:
             entity_id=args.entity_id,
             require_intent=True,
         )
-        world_state_path = resolve_world_state_path(
-            status_snapshots.get("asset", {}), package_root
-        )
+        world_state_path = resolve_world_state_path(status_snapshots.get("asset", {}), package_root)
 
         ensure_entity(
             args.api_base_url,

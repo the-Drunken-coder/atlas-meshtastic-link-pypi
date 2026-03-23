@@ -1,4 +1,5 @@
 """PI test: measure Atlas command round-trip latency from API task create to world_state."""
+
 from __future__ import annotations
 
 import pytest
@@ -19,9 +20,7 @@ def test_command_latency(
     """Measure latency from task create to world_state update."""
     env = pi_ready_entity
 
-    task_id, started_at = create_task(
-        pi_api_base, pi_entity_id, task_id_prefix="latency"
-    )
+    task_id, started_at = create_task(pi_api_base, pi_entity_id, task_id_prefix="latency")
     pi_task_cleanup.register(task_id)
 
     arrived_at = wait_for_task_in_world_state(

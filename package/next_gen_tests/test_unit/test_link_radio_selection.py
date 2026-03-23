@@ -1,4 +1,5 @@
 """Unit tests for _link radio auto-discovery selection behavior."""
+
 from __future__ import annotations
 
 import pytest
@@ -15,8 +16,8 @@ def test_build_radio_auto_discovery_skips_busy_ports(monkeypatch):
     class FakeAdapter:
         def __init__(self, port: str, **kwargs) -> None:  # noqa: ANN003
             attempts.append(port)
-            segment_sizes.append(kwargs.get("segment_size"))
-            reliability_methods.append(kwargs.get("reliability_method"))
+            segment_sizes.append(int(kwargs.get("segment_size", 200)))
+            reliability_methods.append(str(kwargs.get("reliability_method", "window")))
             if port == "COM8":
                 raise RuntimeError("Serial port COM8 is already in use by another process.")
             self.port = port
@@ -31,7 +32,9 @@ def test_build_radio_auto_discovery_skips_busy_ports(monkeypatch):
             PortInfo("COM9", "CP2102", "CP2102"),
         ],
     )
-    monkeypatch.setattr("atlas_meshtastic_link.transport.serial_radio.SerialRadioAdapter", FakeAdapter)
+    monkeypatch.setattr(
+        "atlas_meshtastic_link.transport.serial_radio.SerialRadioAdapter", FakeAdapter
+    )
 
     cfg = LinkConfig(radio=RadioConfig(port=None, auto_discover=True))
     radio = _link._build_radio(cfg)
@@ -53,7 +56,9 @@ def test_build_radio_auto_discovery_raises_when_all_busy(monkeypatch):
             PortInfo("COM9", "CP2102", "CP2102"),
         ],
     )
-    monkeypatch.setattr("atlas_meshtastic_link.transport.serial_radio.SerialRadioAdapter", BusyAdapter)
+    monkeypatch.setattr(
+        "atlas_meshtastic_link.transport.serial_radio.SerialRadioAdapter", BusyAdapter
+    )
 
     cfg = LinkConfig(radio=RadioConfig(port=None, auto_discover=True))
     with pytest.raises(RuntimeError, match="all discovered ports are in use"):

@@ -1,4 +1,5 @@
 """Atlas Meshtastic Link — dual-mode gateway/asset link over Meshtastic radios."""
+
 from __future__ import annotations
 
 __version__ = "0.1.0"

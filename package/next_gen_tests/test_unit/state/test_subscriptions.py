@@ -1,4 +1,5 @@
 """Unit tests for state.subscriptions — LeaseRegistry."""
+
 from __future__ import annotations
 
 from atlas_meshtastic_link.state.subscriptions import LeaseRegistry

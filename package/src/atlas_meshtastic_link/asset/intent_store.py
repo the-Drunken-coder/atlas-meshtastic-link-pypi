@@ -1,4 +1,5 @@
 """File-backed intent store for asset user-written input."""
+
 from __future__ import annotations
 
 import hashlib
@@ -123,7 +124,9 @@ class AssetIntentStore:
                     continue
                 if str(kind) in {"tracks", "geofeatures"}:
                     continue
-                normalized["subscriptions"][str(kind)] = [str(item) for item in values if str(item).strip()]
+                normalized["subscriptions"][str(kind)] = [
+                    str(item) for item in values if str(item).strip()
+                ]
         if not normalized.get("entity_type"):
             normalized["entity_type"] = "asset"
         if not normalized.get("subtype"):
@@ -132,7 +135,7 @@ class AssetIntentStore:
             normalized["asset_id"] = self._asset_id or "asset-1"
         if not normalized.get("alias"):
             normalized["alias"] = normalized["asset_id"]
-            
+
         tracks = payload.get("tracks")
         if isinstance(tracks, list):
             valid_tracks = []
@@ -141,13 +144,20 @@ class AssetIntentStore:
                     entity_id = track.get("entity_id")
                     subtype = track.get("subtype")
                     track_comps = track.get("components")
-                    if isinstance(entity_id, str) and entity_id and isinstance(subtype, str) and subtype:
-                        if isinstance(track_comps, dict) and isinstance(track_comps.get("telemetry"), dict):
+                    if (
+                        isinstance(entity_id, str)
+                        and entity_id
+                        and isinstance(subtype, str)
+                        and subtype
+                    ):
+                        if isinstance(track_comps, dict) and isinstance(
+                            track_comps.get("telemetry"), dict
+                        ):
                             valid_tracks.append(track)
             normalized["tracks"] = valid_tracks
         else:
             normalized["tracks"] = []
-            
+
         return normalized
 
     def _content_hash(self, payload: dict[str, Any]) -> str:

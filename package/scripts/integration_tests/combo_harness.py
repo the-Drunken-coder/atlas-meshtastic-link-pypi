@@ -1,4 +1,5 @@
 """Shared harness for integration tests that use the combo webui (gateway + asset)."""
+
 from __future__ import annotations
 
 import argparse
@@ -255,9 +256,9 @@ def wait_for_readiness(
 
         sync_health = last_gateway.get("sync_health_by_asset") or {}
         has_sync_health = bool(sync_health)
-        has_entity_sync_health = (
-            entity_id is None or str(entity_id) in {str(key) for key in sync_health}
-        )
+        has_entity_sync_health = entity_id is None or str(entity_id) in {
+            str(key) for key in sync_health
+        }
 
         if require_intent:
             ready = gateway_running and asset_running and has_sync_health and has_entity_sync_health
@@ -432,7 +433,9 @@ def wait_for_task_in_world_state(
                 if isinstance(data, dict) and world_state_contains_task(data, task_id):
                     return time.perf_counter()
             except (OSError, json.JSONDecodeError) as exc:
-                log.debug("Error reading world_state file %s during poll: %s", world_state_path, exc)
+                log.debug(
+                    "Error reading world_state file %s during poll: %s", world_state_path, exc
+                )
         time.sleep(poll_interval_s)
 
     raise TimeoutError(
@@ -460,7 +463,9 @@ def wait_for_tasks_in_world_state(
                     if found >= set(task_ids):
                         return
             except (OSError, json.JSONDecodeError) as exc:
-                log.debug("Error reading world_state file %s during poll: %s", world_state_path, exc)
+                log.debug(
+                    "Error reading world_state file %s during poll: %s", world_state_path, exc
+                )
         time.sleep(poll_interval_s)
 
     missing = set(task_ids) - found
@@ -569,9 +574,7 @@ def ensure_entity_exists(
             f"Failed to fetch entity {entity_id}: status={status_code}, body={body!r}"
         )
 
-    raise TimeoutError(
-        f"Entity {entity_id} not found after {timeout_s:.0f}s"
-    )
+    raise TimeoutError(f"Entity {entity_id} not found after {timeout_s:.0f}s")
 
 
 def ensure_entity(
@@ -624,7 +627,11 @@ def wait_for_gateway_ready(host: str, gateway_port: int, timeout_s: float) -> di
     while time.monotonic() < deadline:
         try:
             status_code, payload = request_json("GET", gateway_url, timeout=2.0)
-            if status_code == 200 and isinstance(payload, dict) and payload.get("state") == "running":
+            if (
+                status_code == 200
+                and isinstance(payload, dict)
+                and payload.get("state") == "running"
+            ):
                 return payload
         except (URLError, OSError, RuntimeError) as exc:
             log.debug("Gateway status check failed during poll: %s", exc)

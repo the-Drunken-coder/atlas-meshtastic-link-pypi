@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Modify asset subscription at runtime; verify gateway pushes newly subscribed task."""
+
 from __future__ import annotations
 
 import argparse

@@ -1,4 +1,5 @@
 """Integration test configuration - hardware discovery and skip logic."""
+
 from __future__ import annotations
 
 import sys

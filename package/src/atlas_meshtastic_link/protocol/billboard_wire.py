@@ -1,4 +1,5 @@
 """JSON wire helpers for post-provision broadcast billboard messages."""
+
 from __future__ import annotations
 
 import hashlib

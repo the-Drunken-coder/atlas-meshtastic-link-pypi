@@ -1,4 +1,5 @@
 """Integration test: gateway <-> asset communication over real radios."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,6 +7,7 @@ import uuid
 
 import pytest
 from atlas_meshtastic_link.transport.serial_radio import SerialRadioAdapter
+from next_gen_tests.test_helpers import _await_payload
 
 
 async def _await_node_id(radio: SerialRadioAdapter, timeout_seconds: float = 12.0) -> str:
@@ -17,17 +19,6 @@ async def _await_node_id(radio: SerialRadioAdapter, timeout_seconds: float = 12.
         if asyncio.get_running_loop().time() >= deadline:
             raise TimeoutError("timed out waiting for radio node id")
         await asyncio.sleep(0.25)
-
-
-async def _await_payload(radio: SerialRadioAdapter, expected: bytes, timeout_seconds: float = 20.0) -> tuple[bytes, str]:
-    deadline = asyncio.get_running_loop().time() + timeout_seconds
-    while True:
-        remaining = deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            raise TimeoutError("timed out waiting for expected payload")
-        payload, sender = await asyncio.wait_for(radio.receive(), timeout=remaining)
-        if payload == expected:
-            return payload, sender
 
 
 @pytest.mark.hardware

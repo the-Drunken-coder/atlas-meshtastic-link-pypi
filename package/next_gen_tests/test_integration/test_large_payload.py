@@ -1,4 +1,5 @@
 """Integration test: 1KB random payload transfer over two real radios."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,6 +8,7 @@ import string
 
 import pytest
 from atlas_meshtastic_link.transport.serial_radio import SerialRadioAdapter
+from next_gen_tests.test_helpers import _await_payload
 
 _ASCII_ALPHABET = string.ascii_letters + string.digits
 
@@ -24,21 +26,6 @@ async def _await_node_id(radio: SerialRadioAdapter, timeout_seconds: float = 12.
         if asyncio.get_running_loop().time() >= deadline:
             raise TimeoutError("timed out waiting for radio node id")
         await asyncio.sleep(0.25)
-
-
-async def _await_payload(
-    radio: SerialRadioAdapter,
-    expected: bytes,
-    timeout_seconds: float = 60.0,
-) -> tuple[bytes, str]:
-    deadline = asyncio.get_running_loop().time() + timeout_seconds
-    while True:
-        remaining = deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            raise TimeoutError("timed out waiting for expected payload")
-        payload, sender = await asyncio.wait_for(radio.receive(), timeout=remaining)
-        if payload == expected:
-            return payload, sender
 
 
 @pytest.mark.hardware
@@ -63,13 +50,17 @@ def test_large_random_payload_roundtrip(two_radio_ports: tuple[str, str]):
 
             payload_to_gateway = _random_ascii_payload(1024)
             await asset_radio.send(payload_to_gateway, destination=gateway_id)
-            inbound, sender = await _await_payload(gateway_radio, payload_to_gateway)
+            inbound, sender = await _await_payload(
+                gateway_radio, payload_to_gateway, timeout_seconds=60.0
+            )
             assert inbound == payload_to_gateway
             assert sender == asset_id
 
             payload_to_asset = _random_ascii_payload(1024)
             await gateway_radio.send(payload_to_asset, destination=asset_id)
-            inbound, sender = await _await_payload(asset_radio, payload_to_asset)
+            inbound, sender = await _await_payload(
+                asset_radio, payload_to_asset, timeout_seconds=60.0
+            )
             assert inbound == payload_to_asset
             assert sender == gateway_id
         finally:

@@ -39,7 +39,9 @@ class _FakeWorldState:
         self.meta.update(payload)
 
 
-def _make_runner(tmp_path: Path, *, diff_enabled: bool, refresh_s: float, sequence: list[tuple[bool, dict]]) -> AssetRunner:
+def _make_runner(
+    tmp_path: Path, *, diff_enabled: bool, refresh_s: float, sequence: list[tuple[bool, dict]]
+) -> AssetRunner:
     stop_event = asyncio.Event()
     runner = AssetRunner(
         radio=_FakeRadio(),
@@ -63,7 +65,9 @@ def test_runner_initial_publish_is_full_when_diff_enabled(tmp_path: Path):
     payload = {"asset_id": "asset-1", "subscriptions": {"entities": ["e-1"]}, "meta": {}}
 
     async def _run() -> None:
-        runner = _make_runner(tmp_path, diff_enabled=True, refresh_s=10.0, sequence=[(False, payload)])
+        runner = _make_runner(
+            tmp_path, diff_enabled=True, refresh_s=10.0, sequence=[(False, payload)]
+        )
         task = asyncio.create_task(runner._intent_loop())
         await _wait_until(lambda: len(runner._radio.sent) >= 1)
         runner._stop_event.set()
@@ -93,10 +97,13 @@ def test_runner_change_sends_diff_when_enabled(tmp_path: Path):
         runner._stop_event.set()
         await asyncio.wait_for(task, timeout=1.0)
         decoded = [decode_billboard_message(raw) for raw, _ in runner._radio.sent]
-        assert decoded[1] is not None
-        assert decoded[1]["msg_type"] == "atlas.intent.diff"
-        assert decoded[1]["base_hash"] == decoded[0]["intent_hash"]
-        assert decoded[1]["intent_seq"] == decoded[0]["intent_seq"] + 1
+        first = decoded[0]
+        second = decoded[1]
+        assert first is not None
+        assert second is not None
+        assert second["msg_type"] == "atlas.intent.diff"
+        assert second["base_hash"] == first["intent_hash"]
+        assert second["intent_seq"] == first["intent_seq"] + 1
 
     asyncio.run(_run())
 
@@ -105,7 +112,9 @@ def test_runner_heartbeat_sends_full_snapshot(tmp_path: Path):
     payload = {"asset_id": "asset-1", "subscriptions": {"entities": ["e-1"]}, "meta": {}}
 
     async def _run() -> None:
-        runner = _make_runner(tmp_path, diff_enabled=True, refresh_s=0.2, sequence=[(False, payload)])
+        runner = _make_runner(
+            tmp_path, diff_enabled=True, refresh_s=0.2, sequence=[(False, payload)]
+        )
         task = asyncio.create_task(runner._intent_loop())
         await _wait_until(lambda: len(runner._radio.sent) >= 2)
         runner._stop_event.set()
@@ -132,7 +141,9 @@ def test_runner_change_does_not_reset_full_heartbeat_timer(tmp_path: Path):
             sequence=[(False, payload_v1), (True, payload_v2)],
         )
         task = asyncio.create_task(runner._intent_loop())
-        await _wait_until(lambda: len(runner._radio.sent) >= 3, timeout=refresh_s + min_interval_s + 2.0)
+        await _wait_until(
+            lambda: len(runner._radio.sent) >= 3, timeout=refresh_s + min_interval_s + 2.0
+        )
         runner._stop_event.set()
         await asyncio.wait_for(task, timeout=1.0)
         decoded = [decode_billboard_message(raw) for raw, _ in runner._radio.sent]

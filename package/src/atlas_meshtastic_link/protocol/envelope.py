@@ -1,4 +1,5 @@
 """MessageEnvelope — wire-format serialization using msgpack + zstd compression."""
+
 from __future__ import annotations
 
 import logging
@@ -8,7 +9,7 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 try:
-    import msgpack
+    import msgpack  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover
     msgpack = None  # type: ignore[assignment]
 
@@ -32,7 +33,9 @@ def encode(payload: dict[str, Any], *, compress: bool = True) -> bytes:
     Raises ``RuntimeError`` if msgpack is not installed.
     """
     if msgpack is None:
-        raise RuntimeError("msgpack is required for envelope encoding — install with: pip install atlas-meshtastic-link[envelope]")
+        raise RuntimeError(
+            "msgpack is required for envelope encoding — install with: pip install atlas-meshtastic-link[envelope]"
+        )
     raw = msgpack.packb(payload, use_bin_type=True)
     if not compress or zstandard is None:
         return PREFIX_RAW + raw
@@ -49,14 +52,18 @@ def decode(data: bytes) -> dict[str, Any]:
     Raises ``ValueError`` on malformed input.
     """
     if msgpack is None:
-        raise RuntimeError("msgpack is required for envelope decoding — install with: pip install atlas-meshtastic-link[envelope]")
+        raise RuntimeError(
+            "msgpack is required for envelope decoding — install with: pip install atlas-meshtastic-link[envelope]"
+        )
     if len(data) < 2:
         raise ValueError("Envelope too short")
     prefix = data[0:1]
     body = data[1:]
     if prefix == PREFIX_ZSTD:
         if zstandard is None:
-            raise RuntimeError("zstandard is required to decompress this envelope — install with: pip install atlas-meshtastic-link[envelope]")
+            raise RuntimeError(
+                "zstandard is required to decompress this envelope — install with: pip install atlas-meshtastic-link[envelope]"
+            )
         raw = zstandard.ZstdDecompressor().decompress(body, max_output_size=_MAX_DECOMPRESSED_SIZE)
     elif prefix == PREFIX_RAW:
         raw = body
@@ -80,7 +87,9 @@ def wrap(
     before encoding.
     """
     envelope: dict[str, Any] = dict(payload)
-    envelope["_envelope_ts_ms"] = envelope_ts_ms if envelope_ts_ms is not None else int(time.time() * 1000)
+    envelope["_envelope_ts_ms"] = (
+        envelope_ts_ms if envelope_ts_ms is not None else int(time.time() * 1000)
+    )
     return encode(envelope, compress=compress)
 
 

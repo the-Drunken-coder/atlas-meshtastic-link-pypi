@@ -1,4 +1,5 @@
 """WorldStateStore — in-memory dict with atomic JSON flush."""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
+_MISSING = object()
 
 
 class WorldStateStore:
@@ -92,6 +94,15 @@ class WorldStateStore:
                 sections[group][subgroup] = bucket
         bucket[record_id] = record
         self._touch_meta()
+
+    def remove_record(self, *, group: str, record_id: str) -> None:
+        """Drop a record from a top-level section (entities, tasks, objects)."""
+        sections = self._data
+        bucket = sections.get(group)
+        if isinstance(bucket, dict):
+            removed = bucket.pop(record_id, _MISSING)
+            if removed is not _MISSING:
+                self._touch_meta()
 
     def prune_older_than(self, *, group: str, cutoff_epoch: float) -> int:
         sections = self._data

@@ -1,4 +1,5 @@
 """Unit tests for transport.compression."""
+
 from __future__ import annotations
 
 import json
@@ -121,12 +122,14 @@ def test_shorten_keys_ignores_non_json():
 
 def test_shorten_keys_nested():
     """Aliasing should recurse into nested dicts and lists."""
-    payload = json.dumps({
-        "entities": [
-            {"entity_type": "unit", "alias": "alpha"},
-            {"entity_type": "base", "alias": "bravo"},
-        ],
-    }).encode()
+    payload = json.dumps(
+        {
+            "entities": [
+                {"entity_type": "unit", "alias": "alpha"},
+                {"entity_type": "base", "alias": "bravo"},
+            ],
+        }
+    ).encode()
     result = json.loads(shorten_keys(payload))
     assert "e" in result
     for item in result["e"]:
@@ -146,14 +149,16 @@ def test_expand_keys_legacy_long_names():
 
 def test_expand_keys_does_not_rewrite_short_keys_in_meta():
     """Open-ended metadata should keep short user keys unchanged."""
-    payload = json.dumps({
-        "mt": "atlas.intent",
-        "ai": "!abc",
-        "m": {
-            "a": "custom-short-key",
-            "e": {"a": 1},
-        },
-    }).encode()
+    payload = json.dumps(
+        {
+            "mt": "atlas.intent",
+            "ai": "!abc",
+            "m": {
+                "a": "custom-short-key",
+                "e": {"a": 1},
+            },
+        }
+    ).encode()
 
     result = json.loads(expand_keys(payload))
     assert result["msg_type"] == "atlas.intent"
@@ -164,15 +169,17 @@ def test_expand_keys_does_not_rewrite_short_keys_in_meta():
 
 def test_expand_keys_does_not_rewrite_short_keys_in_custom_component():
     """Unknown custom component payloads should not have keys expanded."""
-    payload = json.dumps({
-        "mt": "atlas.intent",
-        "c": {
-            "user_component": {
-                "a": "short-key-should-stay",
-                "e": {"a": 2},
+    payload = json.dumps(
+        {
+            "mt": "atlas.intent",
+            "c": {
+                "user_component": {
+                    "a": "short-key-should-stay",
+                    "e": {"a": 2},
+                },
             },
-        },
-    }).encode()
+        }
+    ).encode()
 
     result = json.loads(expand_keys(payload))
     component = result["components"]["user_component"]

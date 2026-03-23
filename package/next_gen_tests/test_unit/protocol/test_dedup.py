@@ -1,4 +1,5 @@
 """Unit tests for protocol.dedup — RequestDeduper."""
+
 from __future__ import annotations
 
 import time

@@ -1,4 +1,5 @@
 """Payload compression and field-name aliasing for wire payloads."""
+
 from __future__ import annotations
 
 import json
@@ -66,7 +67,13 @@ _FIELD_ALIASES: dict[str, str] = {
 _SHORT_TO_LONG: dict[str, str] = {short: long for long, short in _FIELD_ALIASES.items()}
 
 _OPAQUE_CONTAINER_FIELDS = {"meta", "data", "payload"}
-_KNOWN_COMPONENT_FIELDS = {"communications", "health", "task_catalog", "telemetry", "custom_commands"}
+_KNOWN_COMPONENT_FIELDS = {
+    "communications",
+    "health",
+    "task_catalog",
+    "telemetry",
+    "custom_commands",
+}
 
 
 def _long_key(key: str) -> str:
@@ -92,7 +99,16 @@ def _transform_keys(
     if isinstance(obj, dict):
         transformed: dict[str, Any] = {}
         parent_long = _long_key(parent_key) if parent_key is not None else None
-        for key, value in obj.items():
+        for raw_key, value in obj.items():
+            if not isinstance(raw_key, str):
+                transformed[str(raw_key)] = _transform_keys(
+                    value,
+                    key_map,
+                    parent_key=parent_key,
+                    blocked=blocked,
+                )
+                continue
+            key: str = raw_key
             mapped_key = key if blocked else key_map.get(key, key)
             child_blocked = blocked or _is_opaque_container(key) or _is_opaque_container(mapped_key)
 
@@ -109,8 +125,7 @@ def _transform_keys(
         return transformed
     if isinstance(obj, list):
         return [
-            _transform_keys(item, key_map, parent_key=parent_key, blocked=blocked)
-            for item in obj
+            _transform_keys(item, key_map, parent_key=parent_key, blocked=blocked) for item in obj
         ]
     return obj
 

@@ -1,4 +1,5 @@
 """Unit tests for state.world_state — WorldStateStore."""
+
 from __future__ import annotations
 
 import json
@@ -34,7 +35,7 @@ def test_upsert_record_with_subgroup_preserves_existing_structure():
     entities = store.get("entities")
     assert isinstance(entities, dict)
     assert entities["entity-1"]["id"] == "entity-1"
-    
+
     tasks = store.get("tasks")
     assert isinstance(tasks, dict)
     assert tasks["task-1"]["id"] == "task-1"

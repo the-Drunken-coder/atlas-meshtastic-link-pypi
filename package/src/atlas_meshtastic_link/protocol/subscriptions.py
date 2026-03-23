@@ -1,4 +1,5 @@
 """Shared helpers for subscription payload normalization."""
+
 from __future__ import annotations
 
 from typing import Any

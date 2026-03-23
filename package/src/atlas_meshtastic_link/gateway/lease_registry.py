@@ -1,4 +1,5 @@
 """Per-asset subscription lease management on the gateway side."""
+
 from __future__ import annotations
 
 import logging
@@ -41,7 +42,9 @@ class GatewayLeaseManager:
         inbound subscription request from an asset over the mesh.
         """
         if not asset_id or not subscription_key:
-            log.warning("[LEASE] Ignoring subscription request with empty asset_id or subscription_key")
+            log.warning(
+                "[LEASE] Ignoring subscription request with empty asset_id or subscription_key"
+            )
             return
         self._registry.register(asset_id, subscription_key, ttl=ttl)
         log.debug("[LEASE] Registered subscription %s → %s", asset_id, subscription_key)
@@ -62,7 +65,9 @@ class GatewayLeaseManager:
             log.warning("[LEASE] Ignoring subscription set with empty asset_id")
             return
         self._registry.replace_asset_subscriptions(asset_id, subscription_keys, ttl=ttl)
-        log.debug("[LEASE] Replaced subscriptions for %s (%d keys)", asset_id, len(subscription_keys))
+        log.debug(
+            "[LEASE] Replaced subscriptions for %s (%d keys)", asset_id, len(subscription_keys)
+        )
 
     def active_subscriptions(self, asset_id: str) -> list[str]:
         """Return subscription keys with active leases for the given asset."""

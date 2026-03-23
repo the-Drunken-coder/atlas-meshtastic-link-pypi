@@ -1,4 +1,5 @@
 """Unit tests for scripts.integration_tests.combo_harness."""
+
 from __future__ import annotations
 
 import argparse
@@ -46,7 +47,7 @@ def test_task_in_world_state_dict() -> None:
 
 
 def test_validate_world_state_structure() -> None:
-    valid = {
+    valid: dict[str, dict[str, object]] = {
         "meta": {},
         "index": {},
         "entities": {},
@@ -55,10 +56,20 @@ def test_validate_world_state_structure() -> None:
     }
     assert validate_world_state_structure(valid) == []
 
-    missing_meta = {"index": {}, "entities": {}, "tasks": {}, "objects": {}}
+    missing_meta: dict[str, dict[str, object]] = {
+        "index": {},
+        "entities": {},
+        "tasks": {},
+        "objects": {},
+    }
     assert "meta" in validate_world_state_structure(missing_meta)
 
-    missing_tasks = {"meta": {}, "index": {}, "entities": {}, "objects": {}}
+    missing_tasks: dict[str, dict[str, object]] = {
+        "meta": {},
+        "index": {},
+        "entities": {},
+        "objects": {},
+    }
     assert "tasks" in validate_world_state_structure(missing_tasks)
 
 
@@ -139,7 +150,10 @@ def test_cleanup_entity_tasks_deletes_all() -> None:
 def test_wait_for_readiness_requires_matching_entity_sync_health_when_intent_required() -> None:
     def _request_json(_method: str, url: str, payload=None, timeout: float = 10.0):  # noqa: ARG001
         if url.endswith(":8840/status"):
-            return 200, {"state": "running", "sync_health_by_asset": {"asset-1": {"state": "healthy"}}}
+            return 200, {
+                "state": "running",
+                "sync_health_by_asset": {"asset-1": {"state": "healthy"}},
+            }
         return 200, {"state": "running"}
 
     with patch(

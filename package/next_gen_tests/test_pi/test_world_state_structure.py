@@ -1,4 +1,5 @@
 """PI test: world_state.json has expected structure."""
+
 from __future__ import annotations
 
 import json
@@ -22,9 +23,7 @@ def test_world_state_structure(
     """World state has meta, subscribed, passive, index."""
     env = pi_ready_entity
 
-    task_id, _ = create_task(
-        pi_api_base, pi_entity_id, task_id_prefix="structure"
-    )
+    task_id, _ = create_task(pi_api_base, pi_entity_id, task_id_prefix="structure")
     pi_task_cleanup.register(task_id)
 
     wait_for_task_in_world_state(

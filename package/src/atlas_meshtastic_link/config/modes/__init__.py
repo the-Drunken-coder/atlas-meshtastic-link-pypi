@@ -1,4 +1,5 @@
 """Radio mode profile loading."""
+
 from __future__ import annotations
 
 import json
@@ -21,8 +22,6 @@ def load_mode_profile(name: str) -> dict:
         raise FileNotFoundError(f"Mode profile not found: {profile_path}")
     data = json.loads(profile_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(
-            f"Mode profile '{name}' must be a JSON object, got {type(data).__name__}"
-        )
+        raise ValueError(f"Mode profile '{name}' must be a JSON object, got {type(data).__name__}")
     log.info("[CONFIG] Loaded mode profile '%s'", name)
     return data

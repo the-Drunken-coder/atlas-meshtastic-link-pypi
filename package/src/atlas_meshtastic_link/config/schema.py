@@ -1,11 +1,12 @@
 """LinkConfig dataclass hierarchy and JSON config loader."""
+
 from __future__ import annotations
 
 import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 from atlas_meshtastic_link.config.modes import load_mode_profile
 
@@ -13,9 +14,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_CHALLENGE_CODE = "ATLAS_CHALLENGE"
 DEFAULT_RESPONSE_CODE = "ATLAS_RESPONSE"
-DEFAULT_GATEWAY_SECRETS_WARNING = (
-    "[CONFIG] Gateway provisioning challenge/response codes are default values; set unique secrets before deployment."
-)
+DEFAULT_GATEWAY_SECRETS_WARNING = "[CONFIG] Gateway provisioning challenge/response codes are default values; set unique secrets before deployment."
 
 
 class ConfigError(Exception):
@@ -107,9 +106,11 @@ def load_config(path_or_config: str | Path | LinkConfig) -> LinkConfig:
 
     raw_radio = _section_dict(raw, "radio")
     if "simulate" in raw_radio:
-        raise ConfigError("radio.simulate is not supported; configure a serial port or auto_discover.")
+        raise ConfigError(
+            "radio.simulate is not supported; configure a serial port or auto_discover."
+        )
     try:
-        radio = RadioConfig(**raw_radio)
+        radio = RadioConfig(**cast(dict[str, Any], raw_radio))
     except TypeError as exc:
         raise ConfigError(f"Invalid radio config: {exc}") from exc
     mode_profile_raw = raw.get("mode_profile", "general")
@@ -131,17 +132,17 @@ def load_config(path_or_config: str | Path | LinkConfig) -> LinkConfig:
     if "reliability_method" not in raw_transport and "reliability_method" in mode_defaults:
         raw_transport["reliability_method"] = mode_defaults["reliability_method"]
     try:
-        transport = TransportConfig(**raw_transport)
+        transport = TransportConfig(**cast(dict[str, Any], raw_transport))
     except TypeError as exc:
         raise ConfigError(f"Invalid transport config: {exc}") from exc
     raw_gateway = _section_dict(raw, "gateway")
     raw_asset = _section_dict(raw, "asset")
     try:
-        gateway = GatewayConfig(**raw_gateway)
+        gateway = GatewayConfig(**cast(dict[str, Any], raw_gateway))
     except TypeError as exc:
         raise ConfigError(f"Invalid gateway config: {exc}") from exc
     try:
-        asset = AssetConfig(**raw_asset)
+        asset = AssetConfig(**cast(dict[str, Any], raw_asset))
     except TypeError as exc:
         raise ConfigError(f"Invalid asset config: {exc}") from exc
 
@@ -169,5 +170,7 @@ def load_config(path_or_config: str | Path | LinkConfig) -> LinkConfig:
 def _section_dict(raw: dict[str, object], key: str) -> dict[str, object]:
     section = raw.get(key, {})
     if not isinstance(section, dict):
-        raise ConfigError(f"Config section '{key}' must be a JSON object, got {type(section).__name__}")
+        raise ConfigError(
+            f"Config section '{key}' must be a JSON object, got {type(section).__name__}"
+        )
     return dict(section)

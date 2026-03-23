@@ -1,4 +1,5 @@
 """Unit tests for protocol.envelope — MessageEnvelope encode/decode."""
+
 from __future__ import annotations
 
 import time
